@@ -32,6 +32,32 @@ Um método só aparece ao atleta quando as suas variáveis estão preenchidas. O
 
 Cada provedor é um ficheiro em `src/server/payments/`; trocar a ProxyPay por outro agregador ou pelo GPO direto da EMIS é reescrever `multicaixa-express.ts`.
 
+## Placar e transmissão em direto
+
+Cada evento tem **áreas de luta** (geridas na página do evento, no painel). Cada área tem:
+
+| Ecrã | Endereço | Para quê |
+|---|---|---|
+| Controlo | `/manage/matches/<luta>/scoreboard` | O mesário marca pontos, vantagens e punições, controla o cronómetro e termina a luta. Abre-se a partir de uma luta pronta, na chave |
+| TV | `/scoreboard/<área>` | Placar em ecrã inteiro para a televisão ou projetor junto ao tatami |
+| Sobreposição | `/overlay/<área>` | Placar compacto com fundo transparente, para usar como fonte de navegador no OBS ou programa semelhante |
+
+Os endereços de TV e de sobreposição são fixos por área: mostram sempre a luta que estiver no placar dessa área e atualizam de segundo a segundo. Terminar a luta no placar grava o resultado na chave e liberta a área.
+
+A plataforma **não transporta vídeo**. A transmissão faz-se pelo YouTube ou pelo Facebook: o organizador cola o endereço na área e carrega em "Pôr em direto", e o leitor aparece na página pública do evento. Só são aceites endereços `https` desses dois serviços.
+
+O placar segue o modelo do jiu-jitsu (pontos +2/+3/+4, vantagens, punições); outros desportos ainda não têm regras próprias.
+
+## Fotografias da página inicial
+
+O slideshow da abertura usa três fotografias de uso livre do Wikimedia Commons, em `public/hero/`. São provisórias: troque-as por fotografias dos próprios eventos (mesmos nomes de ficheiro, ou altere a lista `SLIDES` em `src/app/page.tsx`; são precisas pelo menos três).
+
+| Ficheiro | Origem | Licença |
+|---|---|---|
+| `torneio.jpg` | [Championnats de France CFJJB 2013 (1)](https://commons.wikimedia.org/wiki/File:Championnats_de_France_CFJJB_2013_(1).jpg), por Jgui | CC0 |
+| `luta.jpg` | [Jiu-jitsu tournament with local Australians, 150725-M-BX631-117](https://commons.wikimedia.org/wiki/File:Jiu-jitsu_tournament_with_local_Australians,_U.S._Marine_150725-M-BX631-117.jpg), por Staff Sgt. Jose O. Nava (U.S. Marine Corps) | Domínio público |
+| `finalizacao.jpg` | [Jiu-jitsu tournament with local Australians, 150725-M-BX631-070](https://commons.wikimedia.org/wiki/File:Jiu-jitsu_tournament_with_local_Australians,_U.S._Marine_150725-M-BX631-070.jpg), por Staff Sgt. Jose O. Nava (U.S. Marine Corps) | Domínio público |
+
 ## Comandos
 
 | Comando | O que faz |
@@ -48,4 +74,6 @@ Cada provedor é um ficheiro em `src/server/payments/`; trocar a ProxyPay por ou
 - `src/server/` — acesso a dados e regras que gravam no banco
 - `src/server/auth.ts` — cadastro, login e sessões (cookie httpOnly, token guardado como hash no banco)
 - `src/server/manage.ts` — operações do painel, sempre restritas às organizações do usuário logado
-- `src/app/` — páginas públicas, login/cadastro e painel (`/manage`)
+- `src/server/scoreboard.ts` — placar, cronómetro, áreas de luta e transmissão
+- `src/app/(main)/` — página inicial e, em `(site)/`, páginas públicas, login/registo e painel (`/manage`)
+- `src/app/(bare)/` — ecrãs de placar sem cabeçalho nem rodapé

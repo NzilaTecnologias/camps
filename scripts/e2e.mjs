@@ -30,9 +30,9 @@ class Browser {
     return { status: res.status, location: res.headers.get("location"), html: await res.text() };
   }
   /** Envia o formulário da página `path` que contém `marker`, com os campos dados. */
-  async submit(path, marker, fields = {}) {
+  async submit(path, marker, fields = {}, nth = 0) {
     const { html } = await this.get(path);
-    const form = (html.match(/<form[\s\S]*?<\/form>/g) ?? []).find((f) => f.includes(marker));
+    const form = (html.match(/<form[\s\S]*?<\/form>/g) ?? []).filter((f) => f.includes(marker))[nth];
     if (!form) throw new Error(`formulário com "${marker}" não encontrado em ${path}`);
     const body = new FormData();
     for (const input of form.match(/<input[^>]*type="hidden"[^>]*>/g) ?? []) {
@@ -210,6 +210,99 @@ check("organizador vê o atleta inscrito no painel", /Kiluanji Neto/.test(strip(
 const dave = new Browser();
 r = await dave.submit("/signup?next=//malicioso.example", "password", { name: "Dave Teste", email: `dave${stamp}@teste.local`, password: "senha-do-dave" });
 check("destino externo no login é ignorado", r.status === 303 && new URL(r.location, BASE).href === new URL("/", BASE).href, `${r.status} ${r.location}`);
+
+// Áreas de luta e transmissão em direto
+await alice.submit(eventPath, 'placeholder="Área 1"', { name: "Área 1" });
+r = await alice.get(eventPath);
+const matId = r.html.match(/\/scoreboard\/(\w+)/)?.[1];
+check("área criada com ligações para o ecrã de TV e a sobreposição", Boolean(matId) && r.html.includes(`/overlay/${matId}`));
+r = await alice.submit(eventPath, 'name="streamUrl"', { streamUrl: "https://malicioso.example/video" });
+check("endereço de transmissão de outro sítio é recusado", r.html.includes("YouTube ou do Facebook"));
+await alice.submit(eventPath, 'name="streamUrl"', { streamUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" });
+r = await alice.get(`/events/${slug}`);
+check("transmissão guardada mas fora do ar não aparece ao público", !r.html.includes("youtube.com/embed"));
+await alice.submit(eventPath, "Pôr em direto");
+r = await alice.get(`/events/${slug}`);
+check(
+  "em direto, o leitor aparece na página do evento",
+  r.html.includes("https://www.youtube.com/embed/dQw4w9WgXcQ") && /Transmissão em direto/.test(strip(r.html)),
+  strip(r.html).slice(0, 300),
+);
+r = await alice.get("/events");
+check("lista de eventos assinala o direto", /Em direto/.test(strip(r.html)));
+
+// Placar
+await alice.submit(eventPath, 'name="belt"', { gender: "MALE", ageGroup: "Adulto", belt: "Marrom", weightClass: "Leve", maxWeightKg: "76", price: "0" });
+r = await alice.get(eventPath);
+const scoreboardDivision = divisionLink(r.html, "Marrom Leve");
+for (const [firstName, lastName] of [["Zola", "Paulo"], ["Wilson", "Manuel"]]) {
+  await alice.submit(scoreboardDivision, 'name="firstName"', { firstName, lastName, birthDate: "1997-01-05", academyName: "" });
+}
+await alice.submit(scoreboardDivision, 'name="type"', { type: "SINGLE_ELIMINATION" });
+r = await alice.get(scoreboardDivision);
+const controlPath = r.html.match(/\/manage\/matches\/\w+\/scoreboard/)?.[0];
+check("luta pronta tem ligação para o placar", Boolean(controlPath));
+
+const matState = async () => (await fetch(`${BASE}/api/mats/${matId}/scoreboard`)).json();
+let board = await matState();
+check("área sem luta devolve placar vazio", board.scoreboard === null && board.matName === "Área 1", JSON.stringify(board).slice(0, 200));
+r = await bob.get(controlPath);
+check("outro utilizador não abre o controlo do placar", !r.html.includes('name="matId"'));
+
+await alice.submit(controlPath, 'name="matId"', { matId, durationSeconds: "180" });
+board = (await matState()).scoreboard;
+check(
+  "abrir o placar põe a luta na área, com a duração escolhida e a zeros",
+  board?.clock.durationSeconds === 180 && board.clock.remainingMs === 180000 && board.clock.startedAt === null && board.red.points === 0,
+  JSON.stringify(board).slice(0, 300),
+);
+
+const SCORE_FORM = 'value="points:2"';
+await alice.submit(controlPath, SCORE_FORM, { change: "points:2" });
+await alice.submit(controlPath, SCORE_FORM, { change: "points:3" });
+await alice.submit(controlPath, SCORE_FORM, { change: "points:-1" });
+await alice.submit(controlPath, SCORE_FORM, { change: "advantages:1" }, 1);
+await alice.submit(controlPath, SCORE_FORM, { change: "penalties:-1" }, 1);
+board = (await matState()).scoreboard;
+check(
+  "pontos, vantagens e punições chegam ao placar, sem descer de zero",
+  board.red.points === 4 && board.blue.points === 0 && board.blue.advantages === 1 && board.blue.penalties === 0,
+  JSON.stringify([board.red, board.blue]),
+);
+r = await alice.submit(controlPath, SCORE_FORM, { change: "points:99" });
+check("variação de pontos absurda é recusada", r.html.includes("Valor inv"));
+
+await alice.submit(controlPath, 'name="clock"', { clock: "start" });
+board = (await matState()).scoreboard;
+check("iniciar põe o cronómetro a correr", typeof board.clock.startedAt === "number");
+await new Promise((resolve) => setTimeout(resolve, 1500));
+await alice.submit(controlPath, 'name="clock"', { clock: "pause" });
+board = (await matState()).scoreboard;
+check(
+  "pausar guarda o tempo que passou",
+  board.clock.startedAt === null && board.clock.remainingMs < 179000 && board.clock.remainingMs > 170000,
+  JSON.stringify(board.clock),
+);
+
+r = await carol.get(publicPath(scoreboardDivision));
+check("chave pública mostra a luta a decorrer e os pontos", /A decorrer · Área 1/.test(strip(r.html)) && /4\s?–\s?0/.test(strip(r.html)), strip(r.html).slice(0, 400));
+
+r = await alice.submit(controlPath, 'name="winner"', { winner: "", method: "Pontos" });
+check("terminar sem vencedor é recusado", r.html.includes("Escolha o vencedor"));
+r = await alice.submit(controlPath, 'name="winner"', { winner: "red", method: "Finalização" });
+check("terminar a luta volta à categoria", r.status === 303 && new URL(r.location, BASE).pathname === scoreboardDivision, `${r.status} ${r.location}`);
+board = await matState();
+check("área fica livre depois da luta", board.scoreboard === null);
+r = await alice.get(scoreboardDivision);
+check(
+  "resultado do placar fica na chave e fecha o pódio",
+  /Finalização/.test(strip(r.html)) && /4\s?–\s?0/.test(strip(r.html)) && /1 ?º —/.test(strip(r.html)),
+  strip(r.html).slice(0, 500),
+);
+
+await alice.submit(eventPath, "Terminar direto");
+r = await alice.get(`/events/${slug}`);
+check("terminar o direto tira o leitor da página do evento", !r.html.includes("youtube.com/embed"));
 
 // Sair e entrar
 await alice.submit("/manage", "Sair");

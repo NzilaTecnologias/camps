@@ -20,6 +20,7 @@
   --corner-blue: #2563eb;
 }
 
+/* O mesmo conjunto vale para o tema escuro do sistema e para zonas sempre escuras (.dark-scope). */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0b0c0f;
@@ -36,6 +37,25 @@
     --corner-red: #f87171;
     --corner-blue: #60a5fa;
   }
+}
+
+/* A página inicial é sempre escura, seja qual for o tema do sistema. */
+.dark-scope {
+  --background: #0b0c0f;
+  --surface: #15171c;
+  --surface-2: #1b1e25;
+  --foreground: #eef0f3;
+  --muted: #9ba2ae;
+  --line: #282c35;
+  --primary: #e5303c;
+  --primary-hover: #f04652;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --corner-red: #f87171;
+  --corner-blue: #60a5fa;
+  background: var(--background);
+  color: var(--foreground);
 }
 
 @theme inline {
@@ -80,3 +100,49 @@ body {
   outline-offset: 2px;
 }
 
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Sombra sobre as fotografias da abertura, para o texto se ler sempre. */
+.hero-shade {
+  background:
+    linear-gradient(90deg, rgb(11 12 15 / 0.92) 0%, rgb(11 12 15 / 0.7) 45%, rgb(11 12 15 / 0.25) 100%),
+    linear-gradient(0deg, var(--background) 0%, transparent 28%);
+}
+
+/* Movimento lento das fotografias da abertura (efeito Ken Burns), alternando o sentido. */
+@keyframes slide-in {
+  from { transform: scale(1.04) translate3d(0, 0, 0); }
+  to { transform: scale(1.18) translate3d(-2%, -1.5%, 0); }
+}
+@keyframes slide-out {
+  from { transform: scale(1.18) translate3d(2%, 1%, 0); }
+  to { transform: scale(1.04) translate3d(0, 0, 0); }
+}
+.slide-motion-in { animation: slide-in 9s ease-out both; }
+.slide-motion-out { animation: slide-out 9s ease-out both; }
+
+/* Entrada do texto da abertura. */
+@keyframes hero-enter {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: none; }
+}
+.hero-enter { animation: hero-enter 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+/* Revelação ao deslizar: o componente Reveal marca os elementos como "hidden" e depois "shown". */
+[data-reveal] {
+  transition:
+    opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+[data-reveal="hidden"] {
+  opacity: 0;
+  transform: translateY(32px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .slide-motion-in, .slide-motion-out, .hero-enter { animation: none; }
+}

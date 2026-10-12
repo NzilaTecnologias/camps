@@ -2,6 +2,7 @@ import "dotenv/config";
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { createBracket, reportResult } from "@/server/brackets";
+import { adjustScore, openScoreboard } from "@/server/scoreboard";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -119,6 +120,16 @@ async function main() {
   for (const match of firstRound) {
     await reportResult(match.id, match.redId as string, { method: "Pontos", redScore: 4, blueScore: 2 });
   }
+
+  // E uma semifinal a meio no placar da Área 1, para os ecrãs de placar terem o que mostrar.
+  const semifinal = await prisma.match.findFirstOrThrow({
+    where: { bracket: { division: { eventId: event.id, weightClass: "Leve" } }, round: 2, status: "READY" },
+    orderBy: { position: "asc" },
+  });
+  const mat = await prisma.mat.findFirstOrThrow({ where: { eventId: event.id, name: "Área 1" } });
+  await openScoreboard(owner.id, semifinal.id, mat.id, 300);
+  await adjustScore(owner.id, semifinal.id, "red", "points", 2);
+  await adjustScore(owner.id, semifinal.id, "blue", "advantages", 1);
 
   console.log(`Seed concluído: ${event.name} (/events/${event.slug})`);
 }

@@ -1,13 +1,20 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 
-export function listPublishedEvents() {
+export function listPublishedEvents(take?: number) {
   return prisma.event.findMany({
     where: { status: "PUBLISHED" },
     orderBy: { startsAt: "asc" },
+    take,
     include: {
       organizer: { select: { name: true } },
-      _count: { select: { divisions: true, registrations: { where: { status: "PAID" } } } },
+      _count: {
+        select: {
+          divisions: true,
+          registrations: { where: { status: "PAID" } },
+          mats: { where: { isLive: true } },
+        },
+      },
     },
   });
 }
@@ -17,6 +24,12 @@ export function getPublishedEvent(slug: string) {
     where: { slug, status: "PUBLISHED" },
     include: {
       organizer: { select: { name: true } },
+      // Só as áreas com alguma coisa a acontecer: transmissão no ar ou luta no placar.
+      mats: {
+        where: { OR: [{ isLive: true }, { currentMatchId: { not: null } }] },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        select: { id: true, name: true, streamUrl: true, isLive: true, currentMatchId: true },
+      },
       divisions: {
         orderBy: { maxWeightKg: "asc" },
         include: {
@@ -47,7 +60,7 @@ export const divisionDetails = {
     include: {
       matches: {
         orderBy: [{ round: "asc" }, { position: "asc" }],
-        include: { red: athleteSummary, blue: athleteSummary },
+        include: { red: athleteSummary, blue: athleteSummary, currentOnMat: { select: { id: true, name: true } } },
       },
       placements: { orderBy: { place: "asc" }, include: { registration: athleteSummary } },
     },
@@ -61,5 +74,6 @@ export function getDivision(eventSlug: string, divisionId: string) {
   });
 }
 
+export type PublishedEvent = Awaited<ReturnType<typeof listPublishedEvents>>[number];
 export type DivisionDetails = NonNullable<Awaited<ReturnType<typeof getDivision>>>;
 export type BracketDetails = NonNullable<DivisionDetails["bracket"]>;

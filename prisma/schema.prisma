@@ -278,9 +278,15 @@ model Mat {
   eventId   String
   name      String
   sortOrder Int    @default(0)
+  /// Luta que está agora no placar desta área; é o que o ecrã de TV e a sobreposição mostram.
+  currentMatchId String? @unique
+  /// Endereço da transmissão (YouTube ou Facebook) desta área.
+  streamUrl String?
+  isLive    Boolean @default(false)
 
-  event   Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  matches Match[]
+  event        Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  matches      Match[] @relation("MatMatches")
+  currentMatch Match?  @relation("CurrentMatch", fields: [currentMatchId], references: [id], onDelete: SetNull)
 
   @@unique([eventId, name])
 }
@@ -311,6 +317,16 @@ model Match {
   method    String?
   redScore  Int         @default(0)
   blueScore Int         @default(0)
+  redAdvantages  Int    @default(0)
+  blueAdvantages Int    @default(0)
+  redPenalties   Int    @default(0)
+  bluePenalties  Int    @default(0)
+
+  /// Cronómetro do placar. Parado: `clockRemainingMs` é o tempo que falta.
+  /// A correr: falta `clockRemainingMs` menos o que passou desde `clockStartedAt`.
+  durationSeconds  Int       @default(300)
+  clockRemainingMs Int?
+  clockStartedAt   DateTime?
 
   nextKey       String?
   nextSlot      MatchSlot?
@@ -327,7 +343,8 @@ model Match {
   red     Registration? @relation("Red", fields: [redId], references: [id])
   blue    Registration? @relation("Blue", fields: [blueId], references: [id])
   winner  Registration? @relation("Winner", fields: [winnerId], references: [id])
-  mat     Mat?          @relation(fields: [matId], references: [id])
+  mat     Mat?          @relation("MatMatches", fields: [matId], references: [id])
+  currentOnMat Mat?     @relation("CurrentMatch")
 
   @@unique([bracketId, key])
   @@index([matId, sequence])

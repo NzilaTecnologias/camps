@@ -48,6 +48,17 @@ function MatchCard({ match, actions }: { match: Match; actions?: MatchActions })
       <CornerRow corner={match.red} match={match} stripe="bg-corner-red" />
       <div className="border-t border-line" />
       <CornerRow corner={match.blue} match={match} stripe="bg-corner-blue" />
+      {match.currentOnMat && match.status === "READY" && (
+        <div className="flex items-center justify-between border-t border-line bg-danger/10 px-3 py-1.5 text-xs font-semibold text-danger">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-danger" />
+            A decorrer · {match.currentOnMat.name}
+          </span>
+          <span className="font-mono text-foreground">
+            {match.redScore}–{match.blueScore}
+          </span>
+        </div>
+      )}
       {match.method && (
         <div className="flex justify-between border-t border-line bg-surface-2 px-3 py-1.5 text-xs text-muted">
           <span>{match.method}</span>

@@ -8,7 +8,7 @@ import { divisionDetails } from "./events";
 // Toda função daqui recebe o usuário logado e só enxerga o que pertence a um organizador dele.
 // Por enquanto qualquer membro pode tudo; os papéis (OWNER/ADMIN/STAFF) ainda não restringem nada.
 
-const memberOf = (userId: string) => ({ organizer: { members: { some: { userId } } } });
+export const memberOf = (userId: string) => ({ organizer: { members: { some: { userId } } } });
 
 
 function parseDay(value: string, time: string, label: string): Date {
@@ -96,6 +96,18 @@ export function getManagedEvent(userId: string, eventId: string) {
     where: { id: eventId, ...memberOf(userId) },
     include: {
       organizer: { select: { name: true } },
+      mats: {
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        include: {
+          currentMatch: {
+            select: {
+              id: true,
+              red: { select: { athlete: { select: { firstName: true, lastName: true } } } },
+              blue: { select: { athlete: { select: { firstName: true, lastName: true } } } },
+            },
+          },
+        },
+      },
       divisions: {
         orderBy: [{ gender: "asc" }, { belt: "asc" }, { maxWeightKg: "asc" }],
         include: {
