@@ -5,7 +5,10 @@ export function listPublishedEvents() {
   return prisma.event.findMany({
     where: { status: "PUBLISHED" },
     orderBy: { startsAt: "asc" },
-    include: { organizer: { select: { name: true } }, _count: { select: { registrations: true } } },
+    include: {
+      organizer: { select: { name: true } },
+      _count: { select: { divisions: true, registrations: { where: { status: "PAID" } } } },
+    },
   });
 }
 

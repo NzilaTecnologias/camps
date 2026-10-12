@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { REGISTRATION_STATUS_LABEL, formatDate } from "@/lib/format";
+import { RegistrationStatusBadge } from "@/components/status-badges";
+import { Avatar, Empty, Icon, LinkButton, PageTitle, RowList } from "@/components/ui";
+import { formatDate } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { listMyRegistrations } from "@/server/registrations";
 
@@ -9,44 +11,46 @@ async function RegistrationList() {
   const registrations = await listMyRegistrations(user.id);
   if (registrations.length === 0) {
     return (
-      <p className="opacity-70">
-        Ainda não tem inscrições.{" "}
-        <Link href="/" className="underline">
-          Ver eventos
-        </Link>
-      </p>
+      <Empty>
+        <p className="mb-4">Ainda não tem inscrições.</p>
+        <LinkButton href="/">Ver eventos</LinkButton>
+      </Empty>
     );
   }
   return (
-    <ul className="divide-y divide-foreground/10 rounded-lg border border-foreground/15">
-      {registrations.map((registration) => (
-        <li key={registration.id}>
+    <RowList>
+      {registrations.map((registration) => {
+        const name = `${registration.athlete.firstName} ${registration.athlete.lastName}`;
+        return (
           <Link
+            key={registration.id}
             href={`/registrations/${registration.id}`}
-            className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-foreground/5"
+            className="group flex items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-2"
           >
-            <span>
-              <span className="block font-medium">
-                {registration.athlete.firstName} {registration.athlete.lastName}
-              </span>
-              <span className="text-sm opacity-60">
+            <Avatar name={name} />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold group-hover:text-primary">{name}</p>
+              <p className="mt-0.5 truncate text-sm text-muted">
                 {registration.division.event.name} · {registration.division.name} ·{" "}
                 {formatDate(registration.division.event.startsAt)}
-              </span>
-            </span>
-            <span className="shrink-0 text-sm opacity-70">{REGISTRATION_STATUS_LABEL[registration.status]}</span>
+              </p>
+            </div>
+            <RegistrationStatusBadge status={registration.status} />
+            <Icon name="chevron-right" className="h-5 w-5 text-muted group-hover:text-primary" />
           </Link>
-        </li>
-      ))}
-    </ul>
+        );
+      })}
+    </RowList>
   );
 }
 
 export default function RegistrationsPage() {
   return (
     <>
-      <h1 className="mb-6 text-2xl font-bold">As minhas inscrições</h1>
-      <Suspense fallback={<p className="opacity-60">A carregar…</p>}>
+      <header className="mb-8 border-b border-line pb-6">
+        <PageTitle>As minhas inscrições</PageTitle>
+      </header>
+      <Suspense fallback={<p className="text-sm text-muted">A carregar…</p>}>
         <RegistrationList />
       </Suspense>
     </>

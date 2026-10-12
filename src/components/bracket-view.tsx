@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { BracketDetails } from "@/server/events";
+import { Icon } from "./ui";
 
 export type BracketMatchDetails = BracketDetails["matches"][number];
 type Match = BracketMatchDetails;
@@ -14,38 +15,57 @@ function roundLabel(round: number, totalRounds: number, type: BracketDetails["ty
   return ["Final", "Semifinal", "Quartas de final", "Oitavas de final"][fromEnd] ?? `Rodada ${round}`;
 }
 
-function CornerRow({ corner, match, color }: { corner: Corner; match: Match; color: string }) {
+function CornerRow({ corner, match, stripe }: { corner: Corner; match: Match; stripe: string }) {
   const isWinner = corner !== null && match.winnerId === corner.id;
-  const placeholder = match.status === "BYE" ? "—" : "A definir";
+  const isLoser = corner !== null && match.winnerId !== null && !isWinner;
+  const placeholder = match.status === "BYE" ? "Sem adversário" : "A definir";
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 ${isWinner ? "font-semibold" : ""}`}>
-      <span className={`h-2 w-2 shrink-0 rounded-full ${color}`} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate">
-          {corner ? `${corner.athlete.firstName} ${corner.athlete.lastName}` : placeholder}
+    <div className={`flex items-stretch ${isWinner ? "bg-success/8" : ""}`}>
+      <span className={`w-1.5 shrink-0 ${stripe}`} />
+      <div className={`flex min-w-0 flex-1 items-center gap-2 px-3 py-2 ${isLoser ? "opacity-55" : ""}`}>
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate ${isWinner ? "font-bold" : corner ? "font-medium" : "text-muted"}`}>
+            {corner ? `${corner.athlete.firstName} ${corner.athlete.lastName}` : placeholder}
+          </span>
+          {corner?.athlete.academy && (
+            <span className="block truncate text-xs text-muted">{corner.athlete.academy.name}</span>
+          )}
         </span>
-        {corner?.athlete.academy && (
-          <span className="block truncate text-xs font-normal opacity-60">{corner.athlete.academy.name}</span>
+        {isWinner && (
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-success text-white">
+            <Icon name="check" className="h-3.5 w-3.5" />
+            <span className="sr-only">venceu</span>
+          </span>
         )}
-      </span>
-      {isWinner && <span className="text-xs text-emerald-600">venceu</span>}
+      </div>
     </div>
   );
 }
 
 function MatchCard({ match, actions }: { match: Match; actions?: MatchActions }) {
   return (
-    <div className="w-56 rounded-lg border border-foreground/15 text-sm">
-      <CornerRow corner={match.red} match={match} color="bg-red-500" />
-      <div className="border-t border-foreground/10" />
-      <CornerRow corner={match.blue} match={match} color="bg-blue-500" />
+    <div className="w-60 overflow-hidden rounded-lg border border-line bg-surface text-sm shadow-sm">
+      <CornerRow corner={match.red} match={match} stripe="bg-corner-red" />
+      <div className="border-t border-line" />
+      <CornerRow corner={match.blue} match={match} stripe="bg-corner-blue" />
       {match.method && (
-        <div className="border-t border-foreground/10 px-3 py-1 text-xs opacity-60">
-          {match.method} · {match.redScore}–{match.blueScore}
+        <div className="flex justify-between border-t border-line bg-surface-2 px-3 py-1.5 text-xs text-muted">
+          <span>{match.method}</span>
+          <span className="font-mono font-semibold text-foreground">
+            {match.redScore}–{match.blueScore}
+          </span>
         </div>
       )}
       {actions?.(match)}
     </div>
+  );
+}
+
+function RoundHeading({ children }: { children: ReactNode }) {
+  return (
+    <h3 className="border-b-2 border-foreground/70 pb-1.5 font-display text-base font-bold uppercase tracking-wide">
+      {children}
+    </h3>
   );
 }
 
@@ -56,27 +76,27 @@ export function BracketView({ bracket, actions }: { bracket: BracketDetails; act
   const totalRounds = Math.max(...rounds);
 
   return (
-    <div className="flex gap-6 overflow-x-auto pb-2">
-      {rounds.map((round) => (
-        <section key={round} className="flex shrink-0 flex-col gap-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wide opacity-60">
-            {roundLabel(round, totalRounds, bracket.type)}
-          </h3>
-          <div className="flex flex-1 flex-col justify-around gap-3">
-            {main
-              .filter((m) => m.round === round)
-              .map((match) => (
-                <MatchCard key={match.id} match={match} actions={actions} />
-              ))}
-          </div>
-          {bronze && round === totalRounds && (
-            <>
-              <h3 className="text-xs font-semibold uppercase tracking-wide opacity-60">Disputa de 3º lugar</h3>
-              <MatchCard match={bronze} actions={actions} />
-            </>
-          )}
-        </section>
-      ))}
+    <div className="-mx-4 overflow-x-auto px-4 pb-3">
+      <div className="flex min-w-max gap-8">
+        {rounds.map((round) => (
+          <section key={round} className="flex shrink-0 flex-col gap-4">
+            <RoundHeading>{roundLabel(round, totalRounds, bracket.type)}</RoundHeading>
+            <div className="flex flex-1 flex-col justify-around gap-4">
+              {main
+                .filter((m) => m.round === round)
+                .map((match) => (
+                  <MatchCard key={match.id} match={match} actions={actions} />
+                ))}
+            </div>
+            {bronze && round === totalRounds && (
+              <>
+                <RoundHeading>Disputa de 3º lugar</RoundHeading>
+                <MatchCard match={bronze} actions={actions} />
+              </>
+            )}
+          </section>
+        ))}
+      </div>
     </div>
   );
 }

@@ -28,3 +28,19 @@ export const REGISTRATION_STATUS_LABEL = {
   PAID: "Confirmada",
   CANCELLED: "Cancelada",
 } as const;
+
+/** Dia e mês separados, para o bloco de data dos cartões de evento. */
+export function dateParts(date: Date) {
+  const part = (options: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat(LOCALE, { ...options, timeZone: TIME_ZONE }).format(date);
+  return { day: part({ day: "2-digit" }), month: part({ month: "short" }).replace(".", ""), year: part({ year: "numeric" }) };
+}
+
+export function formatWeight(maxWeightKg: { toString(): string } | null) {
+  return maxWeightKg ? `até ${maxWeightKg.toString()} kg` : "sem limite de peso";
+}
+
+/** "1 inscrito", "8 inscritos". */
+export function count(n: number, singular: string, plural: string) {
+  return `${n} ${n === 1 ? singular : plural}`;
+}

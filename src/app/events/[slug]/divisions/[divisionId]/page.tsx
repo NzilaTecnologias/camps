@@ -1,8 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { BracketView } from "@/components/bracket-view";
-import { formatMoney } from "@/lib/format";
+import { Podium, RegistrantList } from "@/components/division-parts";
+import { BackLink, Badge, Empty, Icon, LinkButton, PageTitle, SectionTitle } from "@/components/ui";
+import { BRACKET_TYPE_LABEL, formatMoney, formatWeight, count } from "@/lib/format";
 import { getDivision } from "@/server/events";
 import { registrationClosedReason } from "@/server/registrations";
 
@@ -12,58 +13,53 @@ async function DivisionDetails({ params }: { params: Promise<{ slug: string; div
   if (!division) notFound();
   const { bracket } = division;
   const closedReason = registrationClosedReason(division.event);
+  const price = division.priceCents === 0 ? "Gratuito" : formatMoney(division.priceCents, division.event.currency);
 
   return (
     <>
-      <header className="mb-8">
-        <Link href={`/events/${division.event.slug}`} className="text-sm opacity-60 hover:opacity-100">
-          ← {division.event.name}
-        </Link>
-        <h1 className="text-2xl font-bold">{division.name}</h1>
-        {closedReason ? (
-          <p className="mt-2 text-sm opacity-60">{closedReason}.</p>
-        ) : (
-          <Link
-            href={`/events/${division.event.slug}/divisions/${division.id}/register`}
-            className="mt-3 inline-block rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background"
-          >
-            Inscrever-se ·{" "}
-            {division.priceCents === 0 ? "gratuito" : formatMoney(division.priceCents, division.event.currency)}
-          </Link>
-        )}
+      <BackLink href={`/events/${division.event.slug}`}>{division.event.name}</BackLink>
+      <header className="mt-3 mb-10 flex flex-wrap items-end justify-between gap-6 border-b border-line pb-8">
+        <div>
+          <PageTitle>{division.name}</PageTitle>
+          <p className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted">
+            <span className="flex items-center gap-1.5">
+              <Icon name="scale" />
+              {formatWeight(division.maxWeightKg)}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Icon name="users" />
+              {count(division.registrations.length, "inscrito", "inscritos")}
+            </span>
+            {bracket && <Badge tone="primary">{BRACKET_TYPE_LABEL[bracket.type]}</Badge>}
+          </p>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="font-display text-3xl font-bold leading-none">{price}</span>
+          {closedReason ? (
+            <Badge>{closedReason}</Badge>
+          ) : (
+            <LinkButton href={`/events/${division.event.slug}/divisions/${division.id}/register`}>
+              Inscrever-se
+            </LinkButton>
+          )}
+        </div>
       </header>
 
       {bracket && bracket.placements.length > 0 && (
-        <section className="mb-8">
-          <h2 className="mb-3 text-lg font-semibold">Pódio</h2>
-          <ol className="space-y-1">
-            {bracket.placements.map((placement) => (
-              <li key={placement.id}>
-                {placement.place}º — {placement.registration.athlete.firstName}{" "}
-                {placement.registration.athlete.lastName}
-              </li>
-            ))}
-          </ol>
+        <section className="mb-10">
+          <SectionTitle>Pódio</SectionTitle>
+          <Podium placements={bracket.placements} />
         </section>
       )}
 
-      <section className="mb-8">
-        <h2 className="mb-3 text-lg font-semibold">Chave</h2>
-        {bracket ? <BracketView bracket={bracket} /> : <p className="opacity-60">A chave ainda não foi gerada.</p>}
+      <section className="mb-10">
+        <SectionTitle>Chave</SectionTitle>
+        {bracket ? <BracketView bracket={bracket} /> : <Empty>A chave ainda não foi gerada.</Empty>}
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold">Inscritos ({division.registrations.length})</h2>
-        <ul className="divide-y divide-foreground/10 rounded-lg border border-foreground/15">
-          {division.registrations.map((registration) => (
-            <li key={registration.id} className="flex justify-between gap-4 px-4 py-2">
-              <span>
-                {registration.athlete.firstName} {registration.athlete.lastName}
-              </span>
-              <span className="text-sm opacity-60">{registration.athlete.academy?.name}</span>
-            </li>
-          ))}
-        </ul>
+        <SectionTitle>Inscritos ({division.registrations.length})</SectionTitle>
+        <RegistrantList registrations={division.registrations} />
       </section>
     </>
   );
@@ -71,7 +67,7 @@ async function DivisionDetails({ params }: { params: Promise<{ slug: string; div
 
 export default function DivisionPage({ params }: PageProps<"/events/[slug]/divisions/[divisionId]">) {
   return (
-    <Suspense fallback={<p className="opacity-60">A carregar categoria…</p>}>
+    <Suspense fallback={<p className="text-sm text-muted">A carregar categoria…</p>}>
       <DivisionDetails params={params} />
     </Suspense>
   );

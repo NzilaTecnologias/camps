@@ -2,7 +2,9 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Field } from "@/components/field";
-import { EVENT_STATUS_LABEL, formatDate } from "@/lib/format";
+import { EventStatusBadge } from "@/components/status-badges";
+import { Card, Empty, Icon, LinkButton, PageTitle, RowList, SectionTitle } from "@/components/ui";
+import { formatDate, count } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { listOrganizers } from "@/server/manage";
 import { createOrganizerAction } from "./actions";
@@ -12,65 +14,83 @@ async function Dashboard() {
   const organizers = await listOrganizers(user.id);
 
   return (
-    <>
-      {organizers.length === 0 && (
-        <p className="mb-8 opacity-70">
-          Para criar eventos você precisa de uma organização: a liga, federação ou academia que promove o torneio.
-        </p>
-      )}
+    <div className="grid gap-8 lg:grid-cols-[1fr_20rem]">
+      <div className="space-y-10">
+        {organizers.length === 0 && (
+          <Empty>
+            Para criar eventos você precisa de uma organização: a liga, federação ou academia que promove o torneio.
+          </Empty>
+        )}
 
-      {organizers.map((organizer) => (
-        <section key={organizer.id} className="mb-10">
-          <h2 className="mb-3 text-lg font-semibold">{organizer.name}</h2>
-          {organizer.events.length === 0 ? (
-            <p className="opacity-60">Nenhum evento ainda.</p>
-          ) : (
-            <ul className="divide-y divide-foreground/10 rounded-lg border border-foreground/15">
-              {organizer.events.map((event) => (
-                <li key={event.id}>
+        {organizers.map((organizer) => (
+          <section key={organizer.id}>
+            <SectionTitle aside={<span className="text-sm text-muted">{count(organizer.events.length, "evento", "eventos")}</span>}>
+              {organizer.name}
+            </SectionTitle>
+            {organizer.events.length === 0 ? (
+              <Empty>Nenhum evento ainda.</Empty>
+            ) : (
+              <RowList>
+                {organizer.events.map((event) => (
                   <Link
+                    key={event.id}
                     href={`/manage/events/${event.id}`}
-                    className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-foreground/5"
+                    className="group flex items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-2"
                   >
-                    <span>
-                      <span className="block font-medium">{event.name}</span>
-                      <span className="text-sm opacity-60">
-                        {formatDate(event.startsAt)} · {event._count.registrations} inscritos
-                      </span>
-                    </span>
-                    <span className="shrink-0 text-sm opacity-70">{EVENT_STATUS_LABEL[event.status]}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold group-hover:text-primary">{event.name}</p>
+                      <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
+                        <span className="flex items-center gap-1.5">
+                          <Icon name="calendar" />
+                          {formatDate(event.startsAt)}
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <Icon name="users" />
+                          {count(event._count.registrations, "inscrito", "inscritos")}
+                        </span>
+                      </p>
+                    </div>
+                    <EventStatusBadge status={event.status} />
+                    <Icon name="chevron-right" className="h-5 w-5 text-muted group-hover:text-primary" />
                   </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      ))}
+                ))}
+              </RowList>
+            )}
+          </section>
+        ))}
+      </div>
 
-      {organizers.length > 0 && (
-        <Link
-          href="/manage/events/new"
-          className="mb-10 inline-block rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background"
-        >
-          Novo evento
-        </Link>
-      )}
-
-      <section className="max-w-sm">
-        <h2 className="mb-3 text-lg font-semibold">Nova organização</h2>
-        <ActionForm action={createOrganizerAction} submitLabel="Criar organização" className="space-y-4">
-          <Field label="Nome" name="name" required />
-        </ActionForm>
-      </section>
-    </>
+      <aside className="flex flex-col gap-4">
+        {organizers.length > 0 && (
+          <LinkButton href="/manage/events/new" className="w-full">
+            <Icon name="plus" />
+            Novo evento
+          </LinkButton>
+        )}
+        <Card className="p-5">
+          <h2 className="mb-4 font-display text-xl font-bold uppercase leading-none">Nova organização</h2>
+          <ActionForm
+            action={createOrganizerAction}
+            submitLabel="Criar organização"
+            submitVariant="secondary"
+            className="flex flex-col gap-4"
+          >
+            <Field label="Nome" name="name" required />
+          </ActionForm>
+        </Card>
+      </aside>
+    </div>
   );
 }
 
 export default function ManagePage() {
   return (
     <>
-      <h1 className="mb-6 text-2xl font-bold">Painel do organizador</h1>
-      <Suspense fallback={<p className="opacity-60">A carregar…</p>}>
+      <header className="mb-8 border-b border-line pb-6">
+        <PageTitle>Painel do organizador</PageTitle>
+        <p className="mt-2 text-sm text-muted">Crie eventos, abra categorias, gere chaves e lance resultados.</p>
+      </header>
+      <Suspense fallback={<p className="text-sm text-muted">A carregar…</p>}>
         <Dashboard />
       </Suspense>
     </>

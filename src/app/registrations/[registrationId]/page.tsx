@@ -4,7 +4,9 @@ import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { PaymentFields } from "@/components/payment-fields";
-import { formatMoney } from "@/lib/format";
+import { RegistrationStatusBadge } from "@/components/status-badges";
+import { BackLink, Card, Icon, PageTitle } from "@/components/ui";
+import { formatDate, formatMoney } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { getMyRegistration } from "@/server/registrations";
 import { payAction, simulatePaymentAction } from "../actions";
@@ -23,46 +25,73 @@ async function RegistrationDetails({ params }: { params: Promise<{ registrationI
   const isAwaiting = pending?.provider === "MULTICAIXA_EXPRESS" || pending?.provider === "SIMULATOR";
 
   return (
-    <div className="max-w-md">
-      <header className="mb-6">
-        <Link href="/registrations" className="text-sm opacity-60 hover:opacity-100">
-          ← As minhas inscrições
-        </Link>
-        <h1 className="text-2xl font-bold">
-          {registration.athlete.firstName} {registration.athlete.lastName}
-        </h1>
-        <p className="opacity-70">
-          <Link href={`/events/${event.slug}/divisions/${registration.division.id}`} className="hover:underline">
-            {event.name} · {registration.division.name}
-          </Link>
-        </p>
+    <div className="mx-auto max-w-2xl">
+      <BackLink href="/registrations">As minhas inscrições</BackLink>
+      <header className="mt-3 mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <PageTitle>
+            {registration.athlete.firstName} {registration.athlete.lastName}
+          </PageTitle>
+          <p className="mt-2 text-sm text-muted">
+            <Link
+              href={`/events/${event.slug}/divisions/${registration.division.id}`}
+              className="hover:text-primary hover:underline"
+            >
+              {event.name} · {registration.division.name}
+            </Link>
+          </p>
+        </div>
+        <RegistrationStatusBadge status={registration.status} />
       </header>
 
-      {registration.status === "PAID" && (
-        <p className="rounded-lg border border-emerald-600/40 bg-emerald-600/10 p-4">
-          Inscrição confirmada{registration.priceCents > 0 && ` · ${price} pagos`}.
-        </p>
-      )}
+      <Card className="mb-6 flex flex-wrap items-center gap-x-8 gap-y-3 px-5 py-4 text-sm">
+        <span className="flex items-center gap-2 text-muted">
+          <Icon name="calendar" />
+          {formatDate(event.startsAt)}
+        </span>
+        <span className="flex items-center gap-2 text-muted">
+          <Icon name="pin" />
+          {[event.venue, event.city].filter(Boolean).join(", ") || "Local a definir"}
+        </span>
+        <span className="ml-auto font-display text-2xl font-bold leading-none">
+          {registration.priceCents === 0 ? "Gratuita" : price}
+        </span>
+      </Card>
 
-      {registration.status === "INCOMPLETE" && pending?.provider === "MULTICAIXA_EXPRESS" && (
-        <div className="rounded-lg border border-foreground/15 p-4">
-          <AutoRefresh seconds={5} />
-          <p className="font-medium">Confirme o pagamento de {price} na app Multicaixa Express.</p>
-          <p className="mt-1 text-sm opacity-70">
-            Enviámos o pedido para o seu telemóvel. Esta página atualiza sozinha assim que o pagamento for
-            confirmado; o pedido expira ao fim de cerca de um minuto e meio.
+      {registration.status === "PAID" && (
+        <div className="flex items-center gap-3 rounded-xl border border-success/40 bg-success/10 p-5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-success text-white">
+            <Icon name="check" className="h-5 w-5" />
+          </span>
+          <p className="font-semibold">
+            Inscrição confirmada{registration.priceCents > 0 && ` · ${price} pagos`}.
           </p>
         </div>
       )}
 
+      {registration.status === "INCOMPLETE" && pending?.provider === "MULTICAIXA_EXPRESS" && (
+        <Card className="p-5">
+          <AutoRefresh seconds={5} />
+          <p className="font-semibold">Confirme o pagamento de {price} na app Multicaixa Express.</p>
+          <p className="mt-1 text-sm text-muted">
+            Enviámos o pedido para o seu telemóvel. Esta página atualiza sozinha assim que o pagamento for
+            confirmado; o pedido expira ao fim de cerca de um minuto e meio.
+          </p>
+        </Card>
+      )}
+
       {registration.status === "INCOMPLETE" && pending?.provider === "SIMULATOR" && (
-        <div className="space-y-3 rounded-lg border border-dashed border-foreground/30 p-4">
-          <p className="text-sm opacity-70">Simulador de pagamentos: escolha o desfecho. Ninguém é cobrado.</p>
-          <div className="flex gap-3">
+        <div className="space-y-4 rounded-xl border-2 border-dashed border-warning/50 bg-warning/5 p-5">
+          <p className="text-sm font-medium">Simulador de pagamentos: escolha o desfecho. Ninguém é cobrado.</p>
+          <div className="flex flex-wrap gap-3">
             <ActionForm action={simulatePaymentAction.bind(null, pending.id, true)} submitLabel="Simular aprovado">
               {null}
             </ActionForm>
-            <ActionForm action={simulatePaymentAction.bind(null, pending.id, false)} submitLabel="Simular recusado">
+            <ActionForm
+              action={simulatePaymentAction.bind(null, pending.id, false)}
+              submitLabel="Simular recusado"
+              submitVariant="secondary"
+            >
               {null}
             </ActionForm>
           </div>
@@ -70,30 +99,31 @@ async function RegistrationDetails({ params }: { params: Promise<{ registrationI
       )}
 
       {registration.status === "INCOMPLETE" && !isAwaiting && (
-        <section className="space-y-4">
+        <Card className="p-6">
+          <h2 className="mb-4 font-display text-xl font-bold uppercase leading-none">Pagamento</h2>
           {pending?.provider === "PAYPAL" ? (
-            <p className="text-sm opacity-70">
+            <p className="mb-4 text-sm text-muted">
               O pagamento no PayPal ainda não foi concluído. Pode tentar de novo abaixo.
             </p>
           ) : (
             lastFailure && (
-              <p role="alert" className="text-sm text-red-600">
+              <p role="alert" className="mb-4 rounded-lg bg-danger/10 px-3 py-2 text-sm font-medium text-danger">
                 O último pagamento não foi concluído: {lastFailure.failureReason ?? "sem detalhe"}.
               </p>
             )
           )}
           {closedReason ? (
-            <p className="opacity-70">{closedReason}.</p>
+            <p className="text-sm text-muted">{closedReason}.</p>
           ) : (
             <ActionForm
               action={payAction.bind(null, registration.id)}
               submitLabel={`Pagar ${price}`}
-              className="space-y-4"
+              className="flex flex-col gap-4"
             >
               <PaymentFields providers={providers} />
             </ActionForm>
           )}
-        </section>
+        </Card>
       )}
     </div>
   );
@@ -101,7 +131,7 @@ async function RegistrationDetails({ params }: { params: Promise<{ registrationI
 
 export default function RegistrationPage({ params }: PageProps<"/registrations/[registrationId]">) {
   return (
-    <Suspense fallback={<p className="opacity-60">A carregar…</p>}>
+    <Suspense fallback={<p className="text-sm text-muted">A carregar…</p>}>
       <RegistrationDetails params={params} />
     </Suspense>
   );

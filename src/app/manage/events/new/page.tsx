@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Field, SelectField } from "@/components/field";
+import { BackLink, Card, Empty, PageTitle } from "@/components/ui";
 import { requireUser } from "@/server/auth";
 import { listOrganizers } from "@/server/manage";
 import { createEventAction } from "../../actions";
@@ -11,43 +12,52 @@ async function NewEventForm() {
   const organizers = await listOrganizers(user.id);
   if (organizers.length === 0) {
     return (
-      <p className="opacity-70">
+      <Empty>
         Crie uma organização no{" "}
-        <Link href="/manage" className="underline">
+        <Link href="/manage" className="font-semibold text-primary hover:underline">
           painel
         </Link>{" "}
         antes de criar um evento.
-      </p>
+      </Empty>
     );
   }
 
   return (
-    <ActionForm action={createEventAction} submitLabel="Criar evento" className="max-w-md space-y-4">
-      <SelectField label="Organização" name="organizerId" required>
-        {organizers.map((organizer) => (
-          <option key={organizer.id} value={organizer.id}>
-            {organizer.name}
-          </option>
-        ))}
-      </SelectField>
-      <Field label="Nome do evento" name="name" required />
-      <Field label="Data do evento" name="date" type="date" required />
-      <Field label="Inscrições até" name="registrationClosesOn" type="date" required />
-      <Field label="Local" name="venue" />
-      <Field label="Cidade" name="city" />
-      <Field label="Descrição" name="description" />
-    </ActionForm>
+    <Card className="max-w-2xl p-6">
+      <ActionForm action={createEventAction} submitLabel="Criar evento" className="grid gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <SelectField label="Organização" name="organizerId" required>
+            {organizers.map((organizer) => (
+              <option key={organizer.id} value={organizer.id}>
+                {organizer.name}
+              </option>
+            ))}
+          </SelectField>
+        </div>
+        <div className="sm:col-span-2">
+          <Field label="Nome do evento" name="name" required />
+        </div>
+        <Field label="Data do evento" name="date" type="date" required />
+        <Field label="Inscrições até" name="registrationClosesOn" type="date" required />
+        <Field label="Local" name="venue" placeholder="Pavilhão, ginásio…" />
+        <Field label="Cidade" name="city" placeholder="Luanda" />
+        <div className="sm:col-span-2">
+          <Field label="Descrição" name="description" />
+        </div>
+      </ActionForm>
+    </Card>
   );
 }
 
 export default function NewEventPage() {
   return (
     <>
-      <Link href="/manage" className="text-sm opacity-60 hover:opacity-100">
-        ← Painel
-      </Link>
-      <h1 className="mb-6 text-2xl font-bold">Novo evento</h1>
-      <Suspense fallback={<p className="opacity-60">A carregar…</p>}>
+      <BackLink href="/manage">Painel</BackLink>
+      <header className="mt-3 mb-8">
+        <PageTitle>Novo evento</PageTitle>
+        <p className="mt-2 text-sm text-muted">O evento nasce como rascunho; só fica visível depois de publicado.</p>
+      </header>
+      <Suspense fallback={<p className="text-sm text-muted">A carregar…</p>}>
         <NewEventForm />
       </Suspense>
     </>
