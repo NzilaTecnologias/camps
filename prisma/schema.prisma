@@ -1,0 +1,346 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum OrganizerRole {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum RegistrationStatus {
+  INCOMPLETE
+  PAID
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  MULTICAIXA_EXPRESS
+  PAYPAL
+  /// Só para desenvolvimento: aprova ou recusa à mão, sem cobrar ninguém.
+  SIMULATOR
+}
+
+enum BracketType {
+  SINGLE_ELIMINATION
+  ROUND_ROBIN
+}
+
+enum MatchStatus {
+  PENDING
+  READY
+  BYE
+  FINISHED
+}
+
+enum MatchSlot {
+  RED
+  BLUE
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+
+  // Uma conta pode gerenciar vários perfis (ex.: pai inscrevendo os filhos).
+  athletes      AthleteProfile[]
+  memberships   OrganizerMember[]
+  registrations Registration[]    @relation("RegisteredBy")
+  sessions      Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  /// SHA-256 do token que fica no cookie; o token em si nunca é gravado.
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AthleteProfile {
+  id        String   @id @default(cuid())
+  userId    String
+  firstName String
+  lastName  String
+  birthDate DateTime @db.Date
+  gender    Gender
+  country   String   @db.Char(2)
+  belt      String?
+  academyId String?
+  createdAt DateTime @default(now())
+
+  user          User           @relation(fields: [userId], references: [id])
+  academy       Academy?       @relation(fields: [academyId], references: [id])
+  registrations Registration[]
+
+  @@index([userId])
+  @@index([academyId])
+}
+
+model Academy {
+  id            String  @id @default(cuid())
+  name          String
+  country       String  @db.Char(2)
+  affiliationId String?
+
+  affiliation Affiliation?     @relation(fields: [affiliationId], references: [id])
+  athletes    AthleteProfile[]
+}
+
+model Affiliation {
+  id   String @id @default(cuid())
+  name String @unique
+
+  academies Academy[]
+}
+
+model Organizer {
+  id   String @id @default(cuid())
+  name String
+  slug String @unique
+
+  members OrganizerMember[]
+  events  Event[]
+}
+
+model OrganizerMember {
+  organizerId String
+  userId      String
+  role        OrganizerRole @default(STAFF)
+
+  organizer Organizer @relation(fields: [organizerId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@id([organizerId, userId])
+}
+
+model Event {
+  id                   String      @id @default(cuid())
+  organizerId          String
+  slug                 String      @unique
+  name                 String
+  description          String?
+  venue                String?
+  city                 String?
+  country              String      @db.Char(2)
+  startsAt             DateTime
+  endsAt               DateTime
+  registrationOpensAt  DateTime
+  registrationClosesAt DateTime
+  status               EventStatus @default(DRAFT)
+  currency             String      @default("AOA") @db.Char(3)
+  capacity             Int?
+  createdAt            DateTime    @default(now())
+
+  organizer     Organizer      @relation(fields: [organizerId], references: [id])
+  divisions     Division[]
+  coupons       Coupon[]
+  registrations Registration[]
+  mats          Mat[]
+
+  @@index([status, startsAt])
+}
+
+/// Categoria de competição: uma combinação de sexo, idade, faixa e peso.
+model Division {
+  id          String   @id @default(cuid())
+  eventId     String
+  name        String
+  gender      Gender
+  ageGroup    String
+  minAge      Int?
+  maxAge      Int?
+  belt        String
+  weightClass String
+  /// Limite superior de peso; nulo = categoria sem limite (pesadíssimo / absoluto).
+  maxWeightKg Decimal? @db.Decimal(5, 2)
+  priceCents  Int
+  capacity    Int?
+
+  event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  registrations Registration[]
+  bracket       Bracket?
+
+  @@index([eventId])
+}
+
+model Coupon {
+  id             String    @id @default(cuid())
+  eventId        String
+  code           String
+  percentOff     Int?
+  amountOffCents Int?
+  maxUses        Int?
+  usedCount      Int       @default(0)
+  expiresAt      DateTime?
+
+  event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  registrations Registration[]
+
+  @@unique([eventId, code])
+}
+
+model Registration {
+  id             String             @id @default(cuid())
+  eventId        String
+  divisionId     String
+  athleteId      String
+  registeredById String
+  status         RegistrationStatus @default(INCOMPLETE)
+  /// Preço final já com desconto, congelado no momento da inscrição.
+  priceCents     Int
+  couponId       String?
+  seed           Int?
+  createdAt      DateTime           @default(now())
+
+  event        Event          @relation(fields: [eventId], references: [id])
+  division     Division       @relation(fields: [divisionId], references: [id])
+  athlete      AthleteProfile @relation(fields: [athleteId], references: [id])
+  registeredBy User           @relation("RegisteredBy", fields: [registeredById], references: [id])
+  coupon       Coupon?        @relation(fields: [couponId], references: [id])
+  payments     Payment[]
+  weighIn      WeighIn?
+  placement    Placement?
+  redMatches   Match[]        @relation("Red")
+  blueMatches  Match[]        @relation("Blue")
+  wonMatches   Match[]        @relation("Winner")
+
+  @@unique([divisionId, athleteId])
+  @@index([eventId, status])
+}
+
+model Payment {
+  id             String          @id @default(cuid())
+  registrationId String
+  provider       PaymentProvider
+  /// Identificador da transação no provedor (transação GPO, ordem PayPal).
+  providerRef    String?
+  /// Valor da inscrição, na moeda do evento.
+  amountCents    Int
+  /// O que foi de facto cobrado no provedor: o PayPal não aceita AOA e cobra noutra moeda.
+  chargeCurrency    String       @db.Char(3)
+  chargeAmountCents Int
+  status         PaymentStatus   @default(PENDING)
+  failureReason  String?
+  createdAt      DateTime        @default(now())
+  settledAt      DateTime?
+
+  registration Registration @relation(fields: [registrationId], references: [id])
+
+  @@unique([provider, providerRef])
+  @@index([registrationId])
+}
+
+model WeighIn {
+  id             String   @id @default(cuid())
+  registrationId String   @unique
+  weightKg       Decimal  @db.Decimal(5, 2)
+  passed         Boolean
+  weighedAt      DateTime @default(now())
+
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+}
+
+/// Área de luta.
+model Mat {
+  id        String @id @default(cuid())
+  eventId   String
+  name      String
+  sortOrder Int    @default(0)
+
+  event   Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  matches Match[]
+
+  @@unique([eventId, name])
+}
+
+model Bracket {
+  id         String      @id @default(cuid())
+  divisionId String      @unique
+  type       BracketType
+  published  Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+
+  division   Division    @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  matches    Match[]
+  placements Placement[]
+}
+
+model Match {
+  id        String      @id @default(cuid())
+  bracketId String
+  /// Chave estável gerada pelo motor de chaves, ex.: "R1-M3", "BRONZE".
+  key       String
+  round     Int
+  position  Int
+  redId     String?
+  blueId    String?
+  winnerId  String?
+  status    MatchStatus @default(PENDING)
+  method    String?
+  redScore  Int         @default(0)
+  blueScore Int         @default(0)
+
+  nextKey       String?
+  nextSlot      MatchSlot?
+  loserNextKey  String?
+  loserNextSlot MatchSlot?
+
+  matId       String?
+  /// Ordem da luta dentro da área.
+  sequence    Int?
+  scheduledAt DateTime?
+  finishedAt  DateTime?
+
+  bracket Bracket       @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+  red     Registration? @relation("Red", fields: [redId], references: [id])
+  blue    Registration? @relation("Blue", fields: [blueId], references: [id])
+  winner  Registration? @relation("Winner", fields: [winnerId], references: [id])
+  mat     Mat?          @relation(fields: [matId], references: [id])
+
+  @@unique([bracketId, key])
+  @@index([matId, sequence])
+}
+
+model Placement {
+  id             String @id @default(cuid())
+  bracketId      String
+  registrationId String @unique
+  place          Int
+
+  bracket      Bracket      @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+  registration Registration @relation(fields: [registrationId], references: [id])
+
+  @@index([bracketId, place])
+}
