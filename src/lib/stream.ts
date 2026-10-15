@@ -1,4 +1,9 @@
-export type StreamEmbed = { provider: "YouTube" | "Facebook"; embedUrl: string };
+export type StreamEmbed = {
+  provider: "YouTube" | "Facebook";
+  embedUrl: string;
+  /** Imagem de pré-visualização; só o YouTube a dá sem autenticação. */
+  thumbnailUrl: string | null;
+};
 
 const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"]);
 const FACEBOOK_HOSTS = new Set(["facebook.com", "www.facebook.com", "m.facebook.com", "fb.watch"]);
@@ -28,14 +33,22 @@ export function parseStreamUrl(input: string): StreamEmbed | null {
             ? segments[1]
             : null;
     if (!id || !YOUTUBE_ID.test(id)) return null;
-    return { provider: "YouTube", embedUrl: `https://www.youtube.com/embed/${id}` };
+    return {
+      provider: "YouTube",
+      embedUrl: `https://www.youtube.com/embed/${id}`,
+      thumbnailUrl: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+    };
   }
 
   if (FACEBOOK_HOSTS.has(url.hostname)) {
     const isVideo = url.hostname === "fb.watch" || /\/videos\/|\/watch\/?$|\/live\//.test(url.pathname);
     if (!isVideo) return null;
     const href = encodeURIComponent(url.toString());
-    return { provider: "Facebook", embedUrl: `https://www.facebook.com/plugins/video.php?href=${href}&show_text=false` };
+    return {
+      provider: "Facebook",
+      embedUrl: `https://www.facebook.com/plugins/video.php?href=${href}&show_text=false`,
+      thumbnailUrl: null,
+    };
   }
 
   return null;

@@ -1,20 +1,33 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Field } from "@/components/field";
-import { Card } from "@/components/ui";
+import { Card, LinkButton } from "@/components/ui";
 import { logInAction } from "../actions";
 
 type SearchParams = PageProps<"/login">["searchParams"];
 
 async function LoginForm({ searchParams }: { searchParams: SearchParams }) {
   const { next } = await searchParams;
+  // Quem cria conta a partir daqui volta para onde ia, como quem entra.
+  const signupHref = typeof next === "string" ? `/signup?next=${encodeURIComponent(next)}` : "/signup";
+
   return (
-    <ActionForm action={logInAction} submitLabel="Entrar" className="flex flex-col gap-4">
-      <Field label="E-mail" name="email" type="email" autoComplete="email" required />
-      <Field label="Palavra-passe" name="password" type="password" autoComplete="current-password" required />
-      {typeof next === "string" && <input type="hidden" name="next" value={next} />}
-    </ActionForm>
+    <>
+      <ActionForm action={logInAction} submitLabel="Entrar" className="flex flex-col gap-4">
+        <Field label="E-mail" name="email" type="email" autoComplete="email" required />
+        <Field label="Palavra-passe" name="password" type="password" autoComplete="current-password" required />
+        {typeof next === "string" && <input type="hidden" name="next" value={next} />}
+      </ActionForm>
+
+      <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-wider text-muted">
+        <span className="h-px flex-1 bg-line" />
+        Ainda não tem conta?
+        <span className="h-px flex-1 bg-line" />
+      </div>
+      <LinkButton href={signupHref} variant="secondary" className="w-full">
+        Criar conta
+      </LinkButton>
+    </>
   );
 }
 
@@ -28,12 +41,6 @@ export default function LoginPage({ searchParams }: PageProps<"/login">) {
           <LoginForm searchParams={searchParams} />
         </Suspense>
       </Card>
-      <p className="mt-5 text-center text-sm text-muted">
-        Ainda não tem conta?{" "}
-        <Link href="/signup" className="font-semibold text-primary hover:underline">
-          Criar conta
-        </Link>
-      </p>
     </div>
   );
 }

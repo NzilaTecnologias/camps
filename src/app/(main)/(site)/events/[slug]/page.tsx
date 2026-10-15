@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { EventsMap } from "@/components/map/events-map";
 import { ScoreboardCard } from "@/components/scoreboard-live";
 import { BackLink, Badge, Empty, Icon, RowList, SectionTitle } from "@/components/ui";
+import { eventLocation } from "@/lib/geo";
 import { parseStreamUrl } from "@/lib/stream";
 import { formatDate, formatMoney, formatWeight, count } from "@/lib/format";
 import { getPublishedEvent } from "@/server/events";
 import { registrationClosedReason } from "@/server/registrations";
+import { Reveal } from "@/components/reveal";
 
 async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -20,45 +23,48 @@ async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
     return embed ? [{ id: mat.id, name: mat.name, ...embed }] : [];
   });
   const activeMats = event.mats.filter((mat) => mat.currentMatchId !== null);
+  const location = eventLocation(event);
 
   return (
     <>
       <BackLink href="/events">Eventos</BackLink>
-      <header className="hero mt-3 mb-10 rounded-2xl px-6 py-10 sm:px-10">
-        <div className="flex flex-wrap items-center gap-3">
-          {closedReason ? <Badge tone="inverse">{closedReason}</Badge> : <Badge tone="accent">Inscrições abertas</Badge>}
-          <span className="text-sm text-white/60">Organização: {event.organizer.name}</span>
-        </div>
-        <h1 className="mt-4 font-display text-5xl font-bold uppercase leading-[0.95] tracking-tight sm:text-6xl">
-          {event.name}
-        </h1>
-        {event.description && <p className="mt-3 max-w-2xl text-white/75">{event.description}</p>}
-        <dl className="mt-7 grid gap-4 text-sm sm:grid-cols-3">
-          <div className="flex items-start gap-3">
-            <Icon name="calendar" className="mt-0.5 h-5 w-5 text-accent" />
-            <div>
-              <dt className="text-xs uppercase tracking-wider text-white/50">Data</dt>
-              <dd className="font-semibold">{formatDate(event.startsAt)}</dd>
-            </div>
+      <Reveal>
+        <header className="hero mt-3 mb-10 rounded-2xl px-6 py-10 sm:px-10">
+          <div className="flex flex-wrap items-center gap-3">
+            {closedReason ? <Badge tone="inverse">{closedReason}</Badge> : <Badge tone="accent">Inscrições abertas</Badge>}
+            <span className="text-sm text-white/60">Organização: {event.organizer.name}</span>
           </div>
-          <div className="flex items-start gap-3">
-            <Icon name="pin" className="mt-0.5 h-5 w-5 text-accent" />
-            <div>
-              <dt className="text-xs uppercase tracking-wider text-white/50">Local</dt>
-              <dd className="font-semibold">
-                {[event.venue, event.city, event.country].filter(Boolean).join(", ")}
-              </dd>
+          <h1 className="mt-4 font-display text-5xl font-bold uppercase leading-[0.95] tracking-tight sm:text-6xl">
+            {event.name}
+          </h1>
+          {event.description && <p className="mt-3 max-w-2xl text-white/75">{event.description}</p>}
+          <dl className="mt-7 grid gap-4 text-sm sm:grid-cols-3">
+            <div className="flex items-start gap-3">
+              <Icon name="calendar" className="mt-0.5 h-5 w-5 text-accent" />
+              <div>
+                <dt className="text-xs uppercase tracking-wider text-white/50">Data</dt>
+                <dd className="font-semibold">{formatDate(event.startsAt)}</dd>
+              </div>
             </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <Icon name="clock" className="mt-0.5 h-5 w-5 text-accent" />
-            <div>
-              <dt className="text-xs uppercase tracking-wider text-white/50">Inscrições até</dt>
-              <dd className="font-semibold">{formatDate(event.registrationClosesAt)}</dd>
+            <div className="flex items-start gap-3">
+              <Icon name="pin" className="mt-0.5 h-5 w-5 text-accent" />
+              <div>
+                <dt className="text-xs uppercase tracking-wider text-white/50">Local</dt>
+                <dd className="font-semibold">
+                  {[event.venue, event.city, event.country].filter(Boolean).join(", ")}
+                </dd>
+              </div>
             </div>
-          </div>
-        </dl>
-      </header>
+            <div className="flex items-start gap-3">
+              <Icon name="clock" className="mt-0.5 h-5 w-5 text-accent" />
+              <div>
+                <dt className="text-xs uppercase tracking-wider text-white/50">Inscrições até</dt>
+                <dd className="font-semibold">{formatDate(event.registrationClosesAt)}</dd>
+              </div>
+            </div>
+          </dl>
+        </header>
+      </Reveal>
 
       {(streams.length > 0 || activeMats.length > 0) && (
         <section className="mb-10">
@@ -92,6 +98,40 @@ async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
               ))}
             </div>
           )}
+        </section>
+      )}
+
+      {location && (
+        <section className="mb-10">
+          <SectionTitle>Localização</SectionTitle>
+          <EventsMap
+            className="h-72"
+            singleZoom={location.exact ? 15 : 12}
+            points={[
+              {
+                id: event.id,
+                ...location,
+                name: event.venue ?? event.name,
+                href: `/events/${event.slug}`,
+                detail: [event.venue, event.city].filter(Boolean).join(", "),
+              },
+            ]}
+          />
+          <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
+            <span className="flex items-center gap-1.5">
+              <Icon name="pin" />
+              {[event.venue, event.city].filter(Boolean).join(", ")}
+              {!location.exact && " (localização aproximada)"}
+            </span>
+            <a
+              href={`https://www.openstreetmap.org/?mlat=${location.lat}&mlon=${location.lng}#map=16/${location.lat}/${location.lng}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-primary hover:underline"
+            >
+              Abrir no mapa ↗
+            </a>
+          </p>
         </section>
       )}
 

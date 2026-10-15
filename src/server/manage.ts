@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db";
 import { UserError } from "@/lib/errors";
 import { DEFAULT_COUNTRY, UTC_OFFSET } from "@/lib/format";
 import { slugify } from "@/lib/slug";
+import { SPORT_NAMES } from "@/lib/sports";
+import { parseLatLng } from "@/lib/geo";
 import { createBracket, reportResult, type BracketKind } from "./brackets";
 import { divisionDetails } from "./events";
 
@@ -54,11 +56,14 @@ export async function createOrganizer(userId: string, name: string) {
 export type EventInput = {
   organizerId: string;
   name: string;
+  sport: string;
   date: string;
   registrationClosesOn: string;
   venue: string;
   city: string;
   description: string;
+  latitude: string;
+  longitude: string;
 };
 
 export async function createEvent(userId: string, input: EventInput) {
@@ -68,6 +73,9 @@ export async function createEvent(userId: string, input: EventInput) {
   if (!membership) throw new UserError("Escolha uma organização sua");
 
   required(input.name, "o nome do evento");
+  if (!SPORT_NAMES.includes(input.sport)) throw new UserError("Escolha a modalidade do evento");
+  const location = parseLatLng(input.latitude, input.longitude);
+  if (location === "invalid") throw new UserError("Localização no mapa inválida");
   const startsAt = parseDay(input.date, "08:00:00", "a data do evento");
   const endsAt = parseDay(input.date, "20:00:00", "a data do evento");
   const registrationClosesAt = parseDay(input.registrationClosesOn, "23:59:59", "o fim das inscrições");
@@ -80,6 +88,9 @@ export async function createEvent(userId: string, input: EventInput) {
       slug,
       name: input.name,
       description: input.description || null,
+      sport: input.sport,
+      latitude: location?.lat ?? null,
+      longitude: location?.lng ?? null,
       venue: input.venue || null,
       city: input.city || null,
       country: DEFAULT_COUNTRY,
@@ -132,6 +143,17 @@ async function requireDivision(userId: string, divisionId: string) {
   });
   if (!division) throw new UserError("Categoria não encontrada");
   return division;
+}
+
+/** Marca (ou apaga, com campos vazios) o ponto do evento no mapa. */
+export async function setEventLocation(userId: string, eventId: string, latitude: string, longitude: string) {
+  const event = await requireEvent(userId, eventId);
+  const location = parseLatLng(latitude, longitude);
+  if (location === "invalid") throw new UserError("Localização no mapa inválida");
+  await prisma.event.update({
+    where: { id: event.id },
+    data: { latitude: location?.lat ?? null, longitude: location?.lng ?? null },
+  });
 }
 
 export async function setEventStatus(userId: string, eventId: string, status: "DRAFT" | "PUBLISHED") {

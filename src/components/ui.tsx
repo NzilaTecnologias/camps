@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
+import { Reveal } from "./reveal";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "inverse";
 type ButtonSize = "md" | "sm";
@@ -67,15 +68,19 @@ export function BackLink({ href, children }: { href: string; children: ReactNode
 }
 
 export function PageTitle({ children }: { children: ReactNode }) {
-  return <h1 className="font-display text-4xl font-bold uppercase leading-none tracking-tight">{children}</h1>;
+  return (
+    <Reveal>
+      <h1 className="font-display text-4xl font-bold uppercase leading-none tracking-tight">{children}</h1>
+    </Reveal>
+  );
 }
 
 export function SectionTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return (
-    <div className="mb-4 flex items-end justify-between gap-4">
+    <Reveal className="mb-4 flex items-end justify-between gap-4">
       <h2 className="font-display text-2xl font-bold uppercase leading-none tracking-tight">{children}</h2>
       {aside}
-    </div>
+    </Reveal>
   );
 }
 
@@ -89,7 +94,11 @@ export function Empty({ children }: { children: ReactNode }) {
 
 /** Lista em cartão, com linhas separadas; cada filho é uma linha. */
 export function RowList({ children }: { children: ReactNode }) {
-  return <Card className="divide-y divide-line overflow-hidden">{children}</Card>;
+  return (
+    <Reveal>
+      <Card className="divide-y divide-line overflow-hidden">{children}</Card>
+    </Reveal>
+  );
 }
 
 export function Avatar({ name }: { name: string }) {
@@ -120,6 +129,10 @@ const ICONS = {
   trophy:
     "M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4ZM7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3",
   scale: "M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0L5 7Zm14 0-3 7a3 3 0 0 0 6 0l-3-7Z",
+  bracket: "M3 5h6v4h5M3 19h6v-4h5M14 9v6M14 12h7",
+  wallet: "M3 7h15a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Zm0 0V6a2 2 0 0 1 2-2h11M16.5 13h.01",
+  monitor: "M3 5h18v11H3zM8 20h8M12 16v4",
+  flag: "M5 21V4M5 4h11l-2 4 2 4H5",
 } as const;
 
 export function Icon({ name, className = "h-4 w-4" }: { name: keyof typeof ICONS; className?: string }) {

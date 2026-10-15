@@ -11,6 +11,7 @@ import {
   createOrganizer,
   generateBracket,
   reportMatchResult,
+  setEventLocation,
   setEventStatus,
 } from "@/server/manage";
 
@@ -28,11 +29,14 @@ export async function createEventAction(_state: ActionState, formData: FormData)
     const event = await createEvent(user.id, {
       organizerId: text(formData, "organizerId"),
       name: text(formData, "name"),
+      sport: text(formData, "sport"),
       date: text(formData, "date"),
       registrationClosesOn: text(formData, "registrationClosesOn"),
       venue: text(formData, "venue"),
       city: text(formData, "city"),
       description: text(formData, "description"),
+      latitude: text(formData, "latitude"),
+      longitude: text(formData, "longitude"),
     });
     redirect(`/manage/events/${event.id}`);
   });
@@ -86,6 +90,14 @@ export async function reportResultAction(matchId: string, _state: ActionState, f
   return runAction(async () => {
     const user = await requireUser();
     await reportMatchResult(user.id, matchId, text(formData, "winnerId"));
+    refresh();
+  });
+}
+
+export async function setEventLocationAction(eventId: string, _state: ActionState, formData: FormData) {
+  return runAction(async () => {
+    const user = await requireUser();
+    await setEventLocation(user.id, eventId, text(formData, "latitude"), text(formData, "longitude"));
     refresh();
   });
 }

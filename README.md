@@ -50,13 +50,21 @@ O placar segue o modelo do jiu-jitsu (pontos +2/+3/+4, vantagens, punições); o
 
 ## Fotografias da página inicial
 
-O slideshow da abertura usa três fotografias de uso livre do Wikimedia Commons, em `public/hero/`. São provisórias: troque-as por fotografias dos próprios eventos (mesmos nomes de ficheiro, ou altere a lista `SLIDES` em `src/app/page.tsx`; são precisas pelo menos três).
+A página inicial usa fotografias de uso livre do Wikimedia Commons, em `public/hero/` e `public/images/`. São provisórias: troque-as por fotografias dos próprios eventos (mesmos nomes de ficheiro, ou altere as listas `SLIDES`, `AUDIENCES` e `SPORT_TILES` em `src/app/(main)/page.tsx`; o slideshow precisa de pelo menos três).
 
 | Ficheiro | Origem | Licença |
 |---|---|---|
-| `torneio.jpg` | [Championnats de France CFJJB 2013 (1)](https://commons.wikimedia.org/wiki/File:Championnats_de_France_CFJJB_2013_(1).jpg), por Jgui | CC0 |
-| `luta.jpg` | [Jiu-jitsu tournament with local Australians, 150725-M-BX631-117](https://commons.wikimedia.org/wiki/File:Jiu-jitsu_tournament_with_local_Australians,_U.S._Marine_150725-M-BX631-117.jpg), por Staff Sgt. Jose O. Nava (U.S. Marine Corps) | Domínio público |
-| `finalizacao.jpg` | [Jiu-jitsu tournament with local Australians, 150725-M-BX631-070](https://commons.wikimedia.org/wiki/File:Jiu-jitsu_tournament_with_local_Australians,_U.S._Marine_150725-M-BX631-070.jpg), por Staff Sgt. Jose O. Nava (U.S. Marine Corps) | Domínio público |
+| `hero/torneio.jpg` | [Championnats de France CFJJB 2013 (1)](https://commons.wikimedia.org/wiki/File:Championnats_de_France_CFJJB_2013_(1).jpg), por Jgui | CC0 |
+| `hero/luta.jpg` | [Jiu-jitsu tournament with local Australians, 150725-M-BX631-117](https://commons.wikimedia.org/wiki/File:Jiu-jitsu_tournament_with_local_Australians,_U.S._Marine_150725-M-BX631-117.jpg), por Staff Sgt. Jose O. Nava (U.S. Marine Corps) | Domínio público |
+| `hero/finalizacao.jpg` | [Jiu-jitsu tournament with local Australians, 150725-M-BX631-070](https://commons.wikimedia.org/wiki/File:Jiu-jitsu_tournament_with_local_Australians,_U.S._Marine_150725-M-BX631-070.jpg), por Staff Sgt. Jose O. Nava (U.S. Marine Corps) | Domínio público |
+| `images/atleta.jpg` | [Athlète de Sambo 03](https://commons.wikimedia.org/wiki/File:Athl%C3%A8te_de_Sambo_03.jpg), por Kani Beat | CC0 |
+| `images/grappling.jpg` | [USMC-110124-M-2306T-163](https://commons.wikimedia.org/wiki/File:USMC-110124-M-2306T-163.jpg), por Lance Cpl. Lisa M. Tourtelot | Domínio público |
+| `images/jiu-jitsu.jpg` | [USMC-110122-M-9595T-067](https://commons.wikimedia.org/wiki/File:USMC-110122-M-9595T-067.jpg), por Lance Cpl. Andrew D. Thorburn | Domínio público |
+| `images/karate-combate.jpg` | [Karate tournament combat](https://commons.wikimedia.org/wiki/File:Karate_tournament_combat.jpg), por Miguel Angel Omaña Rojas | CC0 |
+| `images/karate-placar.jpg` | [Karate International tournament](https://commons.wikimedia.org/wiki/File:Karate_International_tournament.jpg), por Miguel Angel Omaña Rojas | CC0 |
+| `images/podio.jpg` | [Shirin Sharmin Chaudhury At Karate Tournament Shaheed Suhrawardi Stadium Dhaka 2015-10-23 (PID-0057606)](https://commons.wikimedia.org/wiki/File:Shirin_Sharmin_Chaudhury_At_Karate_Tournament_Shaheed_Suhrawardi_Stadium_Dhaka_2015-10-23_(PID-0057606).jpg), por Press Information Department (Bangladesh) | Domínio público |
+| `images/taekwondo.jpg` | [Img notipGO5DLrPzS](https://commons.wikimedia.org/wiki/File:Img_notipGO5DLrPzS.jpg), por Tomas Peruzzo | CC0 |
+| `images/torneio-infantil.jpg` | [Karate tournament for Kids](https://commons.wikimedia.org/wiki/File:Karate_tournament_for_Kids.jpg), por Samson Ssemakadde | CC0 |
 
 ## Comandos
 

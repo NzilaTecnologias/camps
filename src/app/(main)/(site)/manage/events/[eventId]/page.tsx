@@ -3,13 +3,15 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Field, SelectField } from "@/components/field";
+import { LocationPicker } from "@/components/map/location-picker";
 import { MatManager } from "@/components/mat-manager";
 import { EventStatusBadge } from "@/components/status-badges";
 import { BackLink, Badge, Card, Empty, Icon, LinkButton, PageTitle, RowList, SectionTitle } from "@/components/ui";
 import { BRACKET_TYPE_LABEL, formatDate, formatMoney, formatWeight, count } from "@/lib/format";
+import { cityCenter } from "@/lib/geo";
 import { requireUser } from "@/server/auth";
 import { getManagedEvent } from "@/server/manage";
-import { createDivisionAction, setEventStatusAction } from "../../actions";
+import { createDivisionAction, setEventLocationAction, setEventStatusAction } from "../../actions";
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
@@ -78,6 +80,23 @@ async function EventPanel({ params }: { params: Promise<{ eventId: string }> }) 
         <Stat label="Inscritos" value={registered} />
         <Stat label="Chaves geradas" value={brackets} />
       </div>
+
+      <section className="mb-10 max-w-3xl">
+        <SectionTitle>Localização no mapa</SectionTitle>
+        <Card className="p-5">
+          <ActionForm
+            action={setEventLocationAction.bind(null, event.id)}
+            submitLabel="Guardar localização"
+            submitVariant="secondary"
+            className="flex flex-col gap-4"
+          >
+            <LocationPicker
+              initial={event.latitude !== null && event.longitude !== null ? { lat: event.latitude, lng: event.longitude } : null}
+              center={cityCenter(event.city)}
+            />
+          </ActionForm>
+        </Card>
+      </section>
 
       <MatManager eventId={event.id} mats={event.mats} />
 

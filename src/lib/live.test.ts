@@ -4,7 +4,11 @@ import { parseStreamUrl } from "./stream";
 
 describe("parseStreamUrl", () => {
   it("reconhece os vários formatos de endereço do YouTube", () => {
-    const embed = { provider: "YouTube", embedUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ" };
+    const embed = {
+      provider: "YouTube",
+      embedUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
+      thumbnailUrl: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+    };
     expect(parseStreamUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toEqual(embed);
     expect(parseStreamUrl("https://youtu.be/dQw4w9WgXcQ?si=abc")).toEqual(embed);
     expect(parseStreamUrl("https://www.youtube.com/live/dQw4w9WgXcQ")).toEqual(embed);
@@ -18,6 +22,7 @@ describe("parseStreamUrl", () => {
       "https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Fligacamps%2Fvideos%2F1234567890%2F&show_text=false",
     );
     expect(parseStreamUrl("https://fb.watch/abc123/")?.provider).toBe("Facebook");
+    expect(result?.thumbnailUrl).toBeNull();
   });
 
   it("recusa outros sítios, endereços sem https e identificadores inválidos", () => {

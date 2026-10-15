@@ -1,5 +1,6 @@
 import type { BracketDetails, DivisionDetails } from "@/server/events";
 import { Avatar, Card, Empty } from "./ui";
+import { Reveal } from "./reveal";
 
 // Peças partilhadas pela página pública da categoria e pela do painel.
 
@@ -15,22 +16,24 @@ export function Podium({ placements }: { placements: BracketDetails["placements"
     <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {placements.map((placement) => (
         <li key={placement.id}>
-          <Card className="flex items-center gap-3 p-4">
-            <span
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-display text-xl font-bold ${MEDAL[placement.place] ?? "bg-foreground/10 text-foreground"}`}
-            >
-              {placement.place}º
-            </span>
-            <span className="min-w-0">
-              <span className="sr-only"> — </span>
-              <span className="block truncate font-semibold">
-                {placement.registration.athlete.firstName} {placement.registration.athlete.lastName}
+          <Reveal stagger className="h-full">
+            <Card className="flex items-center gap-3 p-4">
+              <span
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-display text-xl font-bold ${MEDAL[placement.place] ?? "bg-foreground/10 text-foreground"}`}
+              >
+                {placement.place}º
               </span>
-              <span className="block truncate text-xs text-muted">
-                {placement.registration.athlete.academy?.name ?? "Sem academia"}
+              <span className="min-w-0">
+                <span className="sr-only"> — </span>
+                <span className="block truncate font-semibold">
+                  {placement.registration.athlete.firstName} {placement.registration.athlete.lastName}
+                </span>
+                <span className="block truncate text-xs text-muted">
+                  {placement.registration.athlete.academy?.name ?? "Sem academia"}
+                </span>
               </span>
-            </span>
-          </Card>
+            </Card>
+          </Reveal>
         </li>
       ))}
     </ol>
@@ -45,15 +48,17 @@ export function RegistrantList({ registrations }: { registrations: DivisionDetai
         const name = `${registration.athlete.firstName} ${registration.athlete.lastName}`;
         return (
           <li key={registration.id}>
-            <Card className="flex items-center gap-3 px-4 py-3">
-              <Avatar name={name} />
-              <span className="min-w-0">
-                <span className="block truncate font-medium">{name}</span>
-                <span className="block truncate text-xs text-muted">
-                  {registration.athlete.academy?.name ?? "Sem academia"}
+            <Reveal stagger className="h-full">
+              <Card className="flex items-center gap-3 px-4 py-3">
+                <Avatar name={name} />
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{name}</span>
+                  <span className="block truncate text-xs text-muted">
+                    {registration.athlete.academy?.name ?? "Sem academia"}
+                  </span>
                 </span>
-              </span>
-            </Card>
+              </Card>
+            </Reveal>
           </li>
         );
       })}

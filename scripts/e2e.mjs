@@ -37,7 +37,8 @@ class Browser {
     const body = new FormData();
     for (const input of form.match(/<input[^>]*type="hidden"[^>]*>/g) ?? []) {
       const name = input.match(/name="([^"]*)"/)?.[1];
-      if (name) body.append(decode(name), decode(input.match(/value="([^"]*)"/)?.[1] ?? ""));
+      // Um campo escondido que o teste também preenche fica com o valor do teste.
+      if (name && !(decode(name) in fields)) body.append(decode(name), decode(input.match(/value="([^"]*)"/)?.[1] ?? ""));
     }
     for (const [name, value] of Object.entries(fields)) body.append(name, value);
     const res = await this.request(path, { method: "POST", body });
@@ -72,11 +73,11 @@ check("organização criada aparece no painel", strip(r.html).includes(`Liga Tes
 const newEvent = await alice.get("/manage/events/new");
 const organizerId = newEvent.html.match(/<option value="([^"]+)"/)?.[1];
 r = await alice.submit("/manage/events/new", 'name="date"', {
-  organizerId, name: `Open Teste ${stamp}`, date: "2027-03-20", registrationClosesOn: "2027-03-25", venue: "", city: "Rio", description: "",
+  organizerId, name: `Open Teste ${stamp}`, sport: "Jiu-Jitsu", date: "2027-03-20", registrationClosesOn: "2027-03-25", venue: "", city: "Rio", description: "",
 });
 check("inscrições depois do evento são recusadas", r.html.includes("o dia do evento"), strip(r.html).slice(0, 300));
 r = await alice.submit("/manage/events/new", 'name="date"', {
-  organizerId, name: `Open Teste ${stamp}`, date: "2027-03-20", registrationClosesOn: "2027-03-13", venue: "Arena", city: "Rio", description: "",
+  organizerId, name: `Open Teste ${stamp}`, sport: "Jiu-Jitsu", date: "2027-03-20", registrationClosesOn: "2027-03-13", venue: "Arena", city: "Rio", description: "",
 });
 const eventPath = r.location ? new URL(r.location, BASE).pathname : "";
 check("evento criado redireciona para a página dele", r.status === 303 && /^\/manage\/events\/\w+$/.test(eventPath), `${r.status} ${r.location}`);
@@ -133,6 +134,22 @@ check("chave disputada não pode ser regerada", /não pode mais ser regerada/.te
 await alice.submit(eventPath, "Publicar evento");
 r = await alice.get(`/events/${slug}`);
 check("evento publicado aparece na página pública", strip(r.html).includes("Adulto Feminino Roxa Pena"), strip(r.html).slice(0, 300));
+
+// Localização no mapa
+r = await alice.get(`/events/${slug}`);
+check("evento numa cidade desconhecida e sem ponto marcado não mostra mapa", !/Abrir no mapa/.test(strip(r.html)) && /Categorias/.test(strip(r.html)));
+r = await alice.submit(eventPath, "Guardar localização", { latitude: "999", longitude: "13.24" });
+check("coordenadas impossíveis são recusadas", r.html.includes("Localização no mapa inválida"));
+await alice.submit(eventPath, "Guardar localização", { latitude: "-8.8301234", longitude: "13.2401234" });
+r = await alice.get(`/events/${slug}`);
+check(
+  "ponto marcado pelo organizador aparece na página do evento",
+  r.html.includes("mlat=-8.830123") && r.html.includes("mlon=13.240123") && !/localização aproximada/.test(strip(r.html)),
+  strip(r.html).slice(0, 200),
+);
+r = await alice.get("/events?view=map");
+check("lista de eventos abre o mapa", /Esconder mapa/.test(strip(r.html)) && r.html.includes('aria-label="Mapa dos eventos"'));
+
 
 // Isolamento entre organizadores
 await bob.submit("/signup", "password", { name: "Bob Teste", email: `bob${stamp}@teste.local`, password: "senha-do-bob-1" });
@@ -230,6 +247,14 @@ check(
 );
 r = await alice.get("/events");
 check("lista de eventos assinala o direto", /Em direto/.test(strip(r.html)));
+r = await alice.get("/live");
+check(
+  "página de Transmissão mostra o cartão da transmissão",
+  r.html.includes(`href="/live/${matId}"`) && strip(r.html).includes(`Open Teste ${stamp}`) && r.html.includes("i.ytimg.com"),
+  strip(r.html).slice(0, 300),
+);
+r = await alice.get(`/live/${matId}`);
+check("página da transmissão embute o vídeo", r.html.includes("https://www.youtube.com/embed/dQw4w9WgXcQ") && /Ao vivo/i.test(strip(r.html)));
 
 // Placar
 await alice.submit(eventPath, 'name="belt"', { gender: "MALE", ageGroup: "Adulto", belt: "Marrom", weightClass: "Leve", maxWeightKg: "76", price: "0" });
@@ -303,6 +328,10 @@ check(
 await alice.submit(eventPath, "Terminar direto");
 r = await alice.get(`/events/${slug}`);
 check("terminar o direto tira o leitor da página do evento", !r.html.includes("youtube.com/embed"));
+r = await alice.get(`/live/${matId}`);
+check("transmissão terminada já não mostra o vídeo", !r.html.includes("youtube.com/embed") && /terminou/.test(strip(r.html)));
+r = await alice.get("/live");
+check("transmissão terminada sai da página de Transmissão", !r.html.includes(`href="/live/${matId}"`));
 
 // Sair e entrar
 await alice.submit("/manage", "Sair");

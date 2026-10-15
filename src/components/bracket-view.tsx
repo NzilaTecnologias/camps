@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { BracketDetails } from "@/server/events";
 import { Icon } from "./ui";
+import { Reveal } from "./reveal";
 
 export type BracketMatchDetails = BracketDetails["matches"][number];
 type Match = BracketMatchDetails;
@@ -90,22 +91,24 @@ export function BracketView({ bracket, actions }: { bracket: BracketDetails; act
     <div className="-mx-4 overflow-x-auto px-4 pb-3">
       <div className="flex min-w-max gap-8">
         {rounds.map((round) => (
-          <section key={round} className="flex shrink-0 flex-col gap-4">
-            <RoundHeading>{roundLabel(round, totalRounds, bracket.type)}</RoundHeading>
-            <div className="flex flex-1 flex-col justify-around gap-4">
-              {main
-                .filter((m) => m.round === round)
-                .map((match) => (
-                  <MatchCard key={match.id} match={match} actions={actions} />
-                ))}
-            </div>
-            {bronze && round === totalRounds && (
-              <>
-                <RoundHeading>Disputa de 3º lugar</RoundHeading>
-                <MatchCard match={bronze} actions={actions} />
-              </>
-            )}
-          </section>
+          <Reveal key={round} stagger className="flex shrink-0">
+            <section className="flex shrink-0 flex-col gap-4">
+              <RoundHeading>{roundLabel(round, totalRounds, bracket.type)}</RoundHeading>
+              <div className="flex flex-1 flex-col justify-around gap-4">
+                {main
+                  .filter((m) => m.round === round)
+                  .map((match) => (
+                    <MatchCard key={match.id} match={match} actions={actions} />
+                  ))}
+              </div>
+              {bronze && round === totalRounds && (
+                <>
+                  <RoundHeading>Disputa de 3º lugar</RoundHeading>
+                  <MatchCard match={bronze} actions={actions} />
+                </>
+              )}
+            </section>
+          </Reveal>
         ))}
       </div>
     </div>

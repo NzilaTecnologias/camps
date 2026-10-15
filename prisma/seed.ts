@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
+import { slugify } from "@/lib/slug";
 import { createBracket, reportResult } from "@/server/brackets";
 import { adjustScore, openScoreboard } from "@/server/scoreboard";
 
@@ -54,6 +55,7 @@ async function main() {
       registrationOpensAt: new Date(now - 30 * DAY),
       registrationClosesAt: new Date(now + 23 * DAY),
       status: "PUBLISHED",
+      sport: "Jiu-Jitsu",
       mats: { create: [{ name: "Área 1", sortOrder: 1 }, { name: "Área 2", sortOrder: 2 }] },
     },
   });
@@ -89,7 +91,8 @@ async function main() {
         data: {
           userId: owner.id,
           firstName: FIRST_NAMES[athleteIndex % FIRST_NAMES.length],
-          lastName: LAST_NAMES[(athleteIndex * 3) % LAST_NAMES.length],
+          // O desvio a cada volta dos nomes próprios evita dois atletas com o mesmo nome completo.
+          lastName: LAST_NAMES[(athleteIndex * 3 + Math.floor(athleteIndex / FIRST_NAMES.length)) % LAST_NAMES.length],
           birthDate: new Date(1995 + (athleteIndex % 8), athleteIndex % 12, 10),
           gender: "MALE",
           country: "AO",
@@ -119,6 +122,50 @@ async function main() {
   });
   for (const match of firstRound) {
     await reportResult(match.id, match.redId as string, { method: "Pontos", redScore: 4, blueScore: 2 });
+  }
+
+  // Outros eventos de demonstração, para a lista de eventos e os filtros terem conteúdo.
+  // Nomes e organizações são fictícios.
+  const otherOrganizer = await prisma.organizer.create({
+    data: {
+      name: "Liga Sul de Desportos de Combate",
+      slug: "liga-sul",
+      members: { create: { userId: owner.id, role: "OWNER" } },
+    },
+  });
+  const demoEvents = [
+    { name: "Open de Judo de Benguela", sport: "Judo", city: "Benguela", venue: "Pavilhão Acácias Rubras", inDays: 9, days: 1 },
+    { name: "Taça de Karaté do Huambo", sport: "Karaté", city: "Huambo", venue: "Pavilhão Municipal do Huambo", inDays: 16, days: 2 },
+    { name: "Grappling Night Talatona", sport: "Grappling", city: "Luanda", venue: "Arena Talatona", inDays: 21, days: 1 },
+    { name: "Campeonato de Taekwondo do Lubango", sport: "Taekwondo", city: "Lubango", venue: "Pavilhão da Senhora do Monte", inDays: 38, days: 2 },
+    { name: "Kickboxing Cabinda Fight Series", sport: "Kickboxing", city: "Cabinda", venue: "Pavilhão do Tchizo", inDays: 52, days: 1 },
+    { name: "Taça de Jiu-Jitsu do Lobito", sport: "Jiu-Jitsu", city: "Lobito", venue: "Pavilhão do Lobito", inDays: -12, days: 1 },
+    { name: "Open de Luta Livre de Luanda", sport: "Luta", city: "Luanda", venue: "Pavilhão da Cidadela", inDays: -40, days: 2 },
+  ];
+  for (const [index, demo] of demoEvents.entries()) {
+    const startsAt = new Date(now + demo.inDays * DAY);
+    await prisma.event.create({
+      data: {
+        organizerId: index % 2 === 0 ? otherOrganizer.id : organizer.id,
+        slug: slugify(demo.name),
+        name: demo.name,
+        sport: demo.sport,
+        venue: demo.venue,
+        city: demo.city,
+        country: "AO",
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + ((demo.days - 1) * 24 + 10) * 60 * 60 * 1000),
+        registrationOpensAt: new Date(startsAt.getTime() - 60 * DAY),
+        registrationClosesAt: new Date(startsAt.getTime() - 5 * DAY),
+        status: "PUBLISHED",
+        divisions: {
+          create: [
+            { name: "Adulto Masculino Absoluto", gender: "MALE", ageGroup: "Adulto", belt: "Todas", weightClass: "Absoluto", priceCents: 1_000_000 },
+            { name: "Adulto Feminino Absoluto", gender: "FEMALE", ageGroup: "Adulto", belt: "Todas", weightClass: "Absoluto", priceCents: 1_000_000 },
+          ],
+        },
+      },
+    });
   }
 
   // E uma semifinal a meio no placar da Área 1, para os ecrãs de placar terem o que mostrar.

@@ -160,6 +160,11 @@ model Event {
   registrationClosesAt DateTime
   status               EventStatus @default(DRAFT)
   currency             String      @default("AOA") @db.Char(3)
+  /// Modalidade principal (lista em src/lib/sports.ts).
+  sport                String      @default("Jiu-Jitsu")
+  /// Ponto marcado pelo organizador no mapa; sem ele, o mapa usa o centro da cidade.
+  latitude             Float?
+  longitude            Float?
   capacity             Int?
   createdAt            DateTime    @default(now())
 

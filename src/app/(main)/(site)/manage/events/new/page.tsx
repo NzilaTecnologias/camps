@@ -3,6 +3,9 @@ import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Field, SelectField } from "@/components/field";
 import { BackLink, Card, Empty, PageTitle } from "@/components/ui";
+import { LocationPicker } from "@/components/map/location-picker";
+import { cityCenter } from "@/lib/geo";
+import { SPORTS } from "@/lib/sports";
 import { requireUser } from "@/server/auth";
 import { listOrganizers } from "@/server/manage";
 import { createEventAction } from "../../actions";
@@ -37,12 +40,24 @@ async function NewEventForm() {
         <div className="sm:col-span-2">
           <Field label="Nome do evento" name="name" required />
         </div>
+        <div className="sm:col-span-2">
+          <SelectField label="Modalidade" name="sport" defaultValue="Jiu-Jitsu" required>
+            {SPORTS.map((sport) => (
+              <option key={sport.name} value={sport.name}>
+                {sport.name}
+              </option>
+            ))}
+          </SelectField>
+        </div>
         <Field label="Data do evento" name="date" type="date" required />
         <Field label="Inscrições até" name="registrationClosesOn" type="date" required />
         <Field label="Local" name="venue" placeholder="Pavilhão, ginásio…" />
         <Field label="Cidade" name="city" placeholder="Luanda" />
         <div className="sm:col-span-2">
           <Field label="Descrição" name="description" />
+        </div>
+        <div className="sm:col-span-2">
+          <LocationPicker initial={null} center={cityCenter("Luanda")} />
         </div>
       </ActionForm>
     </Card>

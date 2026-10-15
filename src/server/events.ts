@@ -1,22 +1,79 @@
 import type { Prisma } from "@/generated/prisma/client";
+import { connection } from "next/server";
 import { prisma } from "@/lib/db";
 
-export function listPublishedEvents(take?: number) {
-  return prisma.event.findMany({
-    where: { status: "PUBLISHED" },
-    orderBy: { startsAt: "asc" },
-    take,
-    include: {
-      organizer: { select: { name: true } },
-      _count: {
-        select: {
-          divisions: true,
-          registrations: { where: { status: "PAID" } },
-          mats: { where: { isLive: true } },
-        },
-      },
+const eventCardInclude = {
+  organizer: { select: { name: true } },
+  _count: {
+    select: {
+      divisions: true,
+      registrations: { where: { status: "PAID" } },
+      mats: { where: { isLive: true } },
     },
+  },
+} satisfies Prisma.EventInclude;
+
+export type EventFilters = {
+  when: "upcoming" | "past";
+  search?: string;
+  sport?: string;
+  city?: string;
+  /** Eventos que decorrem, pelo menos em parte, entre estas datas. */
+  from?: Date | null;
+  to?: Date | null;
+  sort?: "date" | "popular";
+};
+
+export async function listEvents(filters: EventFilters, take?: number) {
+  // A lista depende da hora atual (próximos vs. passados): é calculada em cada pedido.
+  await connection();
+  const now = new Date();
+  const upcoming = filters.when === "upcoming";
+  const terms = (filters.search ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 4);
+
+  return prisma.event.findMany({
+    where: {
+      status: "PUBLISHED",
+      // Um evento a decorrer hoje ainda conta como próximo.
+      endsAt: upcoming ? { gte: now } : { lt: now },
+      ...(filters.sport ? { sport: filters.sport } : {}),
+      ...(filters.city ? { city: { equals: filters.city, mode: "insensitive" as const } } : {}),
+      ...(filters.to ? { startsAt: { lte: filters.to } } : {}),
+      AND: [
+        ...(filters.from ? [{ endsAt: { gte: filters.from } }] : []),
+        ...terms.map((term) => ({
+          OR: [
+            { name: { contains: term, mode: "insensitive" as const } },
+            { city: { contains: term, mode: "insensitive" as const } },
+            { venue: { contains: term, mode: "insensitive" as const } },
+            { organizer: { name: { contains: term, mode: "insensitive" as const } } },
+          ],
+        })),
+      ],
+    },
+    orderBy:
+      filters.sort === "popular"
+        ? [{ registrations: { _count: "desc" } }, { startsAt: upcoming ? "asc" : "desc" }]
+        : { startsAt: upcoming ? "asc" : "desc" },
+    take,
+    include: eventCardInclude,
   });
+}
+
+/** Próximos eventos publicados, do mais próximo para o mais distante. */
+export function listPublishedEvents(take?: number) {
+  return listEvents({ when: "upcoming" }, take);
+}
+
+/** Cidades com eventos publicados, para o filtro da lista. */
+export async function listEventCities() {
+  const rows = await prisma.event.findMany({
+    where: { status: "PUBLISHED", city: { not: null } },
+    distinct: ["city"],
+    select: { city: true },
+    orderBy: { city: "asc" },
+  });
+  return rows.flatMap((row) => (row.city ? [row.city] : []));
 }
 
 export function getPublishedEvent(slug: string) {
