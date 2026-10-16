@@ -3,6 +3,7 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { runAction, text, type ActionState } from "@/lib/action-state";
+import { safeNext } from "@/lib/safe-next";
 import { requireUser } from "@/server/auth";
 import {
   adjustScore,
@@ -49,7 +50,8 @@ export async function finishMatchAction(
   return runAction(async () => {
     const user = await requireUser();
     await finishMatch(user.id, matchId, text(formData, "winner"), text(formData, "method"));
-    redirect(backTo);
+    // backTo chega do navegador como argumento da action: só pode apontar para dentro do site.
+    redirect(safeNext(backTo, "/manage"));
   });
 }
 

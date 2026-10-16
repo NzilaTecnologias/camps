@@ -227,6 +227,8 @@ check("organizador vê o atleta inscrito no painel", /Kiluanji Neto/.test(strip(
 const dave = new Browser();
 r = await dave.submit("/signup?next=//malicioso.example", "password", { name: "Dave Teste", email: `dave${stamp}@teste.local`, password: "senha-do-dave" });
 check("destino externo no login é ignorado", r.status === 303 && new URL(r.location, BASE).href === new URL("/", BASE).href, `${r.status} ${r.location}`);
+r = await new Browser().submit("/login", "password", { email: `dave${stamp}@teste.local`, password: "senha-do-dave", next: "/\t/malicioso.example" });
+check("destino com tab no login é ignorado", r.status === 303 && new URL(r.location, BASE).href === new URL("/", BASE).href, `${r.status} ${r.location}`);
 
 // Áreas de luta e transmissão em direto
 await alice.submit(eventPath, 'placeholder="Área 1"', { name: "Área 1" });
@@ -342,6 +344,11 @@ r = await alice.submit("/login", "password", { email: `ALICE${stamp}@teste.local
 check("login entra no painel", r.status === 303 && alice.cookies.has("camps_session"), `${r.status}`);
 r = await alice.submit("/login", "password", { email: "organizador@camps.local", password: "camps-demo" });
 check("conta demo do seed faz login", r.status === 303, `${r.status}`);
+
+const eve = new Browser();
+for (let i = 0; i < 10; i++) await eve.submit("/login", "password", { email: `dave${stamp}@teste.local`, password: `errada-${i}` });
+r = await eve.submit("/login", "password", { email: `dave${stamp}@teste.local`, password: "senha-do-dave" });
+check("login bloqueia depois de 10 tentativas falhadas", r.html.includes("Demasiadas tentativas") && !eve.cookies.has("camps_session"));
 
 console.log(failures ? `\n${failures} falha(s)` : "\ntudo certo");
 process.exit(failures ? 1 : 0);

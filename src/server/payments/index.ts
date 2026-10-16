@@ -4,12 +4,13 @@ import type { PaymentProvider, ProviderId } from "./types";
 
 /**
  * Provedor de faz-de-conta para desenvolvimento: não cobra ninguém e o resultado é escolhido
- * à mão na página da inscrição. Só existe com PAYMENTS_SIMULATOR=1; nunca ligar em produção.
+ * à mão na página da inscrição. Só existe com PAYMENTS_SIMULATOR=1 e nunca num build de produção,
+ * mesmo que a variável lá fique esquecida: deixaria qualquer pessoa inscrever-se sem pagar.
  */
 const simulator: PaymentProvider = {
   id: "SIMULATOR",
   label: "Simulador (só para testes)",
-  isConfigured: () => process.env.PAYMENTS_SIMULATOR === "1",
+  isConfigured: () => process.env.PAYMENTS_SIMULATOR === "1" && process.env.NODE_ENV !== "production",
   async start({ paymentId, amountCents, currency }) {
     return { providerRef: `sim_${paymentId}`, chargeCurrency: currency, chargeAmountCents: amountCents };
   },

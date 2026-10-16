@@ -5,9 +5,11 @@ import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { UserError } from "@/lib/errors";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import { clearFailures, lockedForMinutes, recordFailure } from "./login-throttle";
 
 export const SESSION_COOKIE = "camps_session";
 const SESSION_DAYS = 30;
+const MAX_PASSWORD_LENGTH = 200;
 
 // Hash de uma senha qualquer, para gastar o mesmo tempo quando o e-mail não existe.
 let dummyHash: Promise<string> | undefined;
@@ -19,6 +21,8 @@ export type CurrentUser = { id: string; name: string; email: string };
 async function createSession(userId: string) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+  // Aproveita para apagar as sessões já expiradas deste utilizador.
+  await prisma.session.deleteMany({ where: { userId, expiresAt: { lt: new Date() } } });
   await prisma.session.create({ data: { tokenHash: hashToken(token), userId, expiresAt } });
 
   (await cookies()).set(SESSION_COOKIE, token, {
@@ -36,6 +40,10 @@ export async function signUp(input: { name: string; email: string; password: str
   if (name.length < 2) throw new UserError("Informe seu nome");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new UserError("Informe um e-mail válido");
   if (input.password.length < 8) throw new UserError("A palavra-passe precisa de ter pelo menos 8 caracteres");
+  if (input.password.length > MAX_PASSWORD_LENGTH) {
+    throw new UserError(`A palavra-passe pode ter no máximo ${MAX_PASSWORD_LENGTH} caracteres`);
+  }
+  if (name.length > 120 || email.length > 254) throw new UserError("Nome ou e-mail demasiado longo");
 
   if (await prisma.user.findUnique({ where: { email }, select: { id: true } })) {
     throw new UserError("Já existe uma conta com este e-mail");
@@ -47,10 +55,21 @@ export async function signUp(input: { name: string; email: string; password: str
 }
 
 export async function logIn(input: { email: string; password: string }) {
-  const user = await prisma.user.findUnique({ where: { email: input.email.trim().toLowerCase() } });
+  const email = input.email.trim().toLowerCase();
+  const minutes = lockedForMinutes(email);
+  if (minutes > 0) {
+    throw new UserError(`Demasiadas tentativas falhadas. Tente novamente dentro de ${minutes} min.`);
+  }
+  if (input.password.length > MAX_PASSWORD_LENGTH) throw new UserError("E-mail ou palavra-passe incorretos");
+
+  const user = await prisma.user.findUnique({ where: { email } });
   dummyHash ??= hashPassword("senha-que-ninguem-usa");
   const valid = await verifyPassword(input.password, user?.passwordHash ?? (await dummyHash));
-  if (!user || !valid) throw new UserError("E-mail ou palavra-passe incorretos");
+  if (!user || !valid) {
+    recordFailure(email);
+    throw new UserError("E-mail ou palavra-passe incorretos");
+  }
+  clearFailures(email);
   await createSession(user.id);
 }
 
