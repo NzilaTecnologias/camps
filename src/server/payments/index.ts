@@ -17,6 +17,12 @@ const simulator: PaymentProvider = {
   async check() {
     return { status: "PENDING" };
   },
+  async refund({ refundId }) {
+    return { refundRef: `sim_${refundId}`, outcome: { status: "SUCCEEDED" } };
+  },
+  async checkRefund() {
+    return { status: "SUCCEEDED" };
+  },
 };
 
 const providers: Record<ProviderId, PaymentProvider> = {

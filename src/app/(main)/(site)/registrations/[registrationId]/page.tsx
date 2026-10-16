@@ -20,6 +20,7 @@ async function RegistrationDetails({ params }: { params: Promise<{ registrationI
   const { event } = registration.division;
   const pending = registration.payments.find((payment) => payment.status === "PENDING");
   const lastFailure = registration.payments.find((payment) => payment.status === "FAILED");
+  const refunded = registration.payments.find((payment) => payment.status === "REFUNDED");
   const price = formatMoney(registration.priceCents, event.currency);
   // Nestes dois casos o desfecho vem de fora e não faz sentido oferecer outro pagamento.
   const isAwaiting = pending?.provider === "MULTICAIXA_EXPRESS" || pending?.provider === "SIMULATOR";
@@ -57,6 +58,29 @@ async function RegistrationDetails({ params }: { params: Promise<{ registrationI
           {registration.priceCents === 0 ? "Gratuita" : price}
         </span>
       </Card>
+
+      {registration.discountCents > 0 && (
+        <p className="-mt-3 mb-6 text-sm text-success">
+          Desconto de {formatMoney(registration.discountCents, event.currency)} aplicado
+          {registration.coupon && ` (cupão ${registration.coupon.code})`}.
+        </p>
+      )}
+
+      {registration.status === "CANCELLED" && refunded && (
+        <div className="rounded-xl border border-line bg-surface p-5">
+          <p className="font-semibold">Inscrição cancelada e reembolsada.</p>
+          <p className="mt-1 text-sm text-muted">
+            {formatMoney(refunded.amountCents, event.currency)} devolvidos pelo organizador
+            {refunded.refund?.reason && ` · ${refunded.refund.reason}`}.
+          </p>
+        </div>
+      )}
+
+      {registration.status === "CANCELLED" && !refunded && (
+        <div className="rounded-xl border border-line bg-surface p-5">
+          <p className="font-semibold">Esta inscrição foi cancelada.</p>
+        </div>
+      )}
 
       {registration.status === "PAID" && (
         <div className="flex items-center gap-3 rounded-xl border border-success/40 bg-success/10 p-5">

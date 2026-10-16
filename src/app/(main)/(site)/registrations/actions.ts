@@ -30,6 +30,7 @@ export async function registerAction(
         academyName: text(formData, "academyName"),
         provider: text(formData, "provider"),
         mobile: text(formData, "mobile"),
+        couponCode: text(formData, "couponCode"),
       }),
     );
   });

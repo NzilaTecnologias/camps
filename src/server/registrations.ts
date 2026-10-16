@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db";
 import { UserError } from "@/lib/errors";
 import { UTC_OFFSET } from "@/lib/format";
 import { normalizeAngolanMobile } from "@/lib/phone";
+import { computePrice } from "@/lib/pricing";
+import { findUsableCoupon } from "./coupons";
 import { appUrl, availableProviders, getProvider, providerFor } from "./payments";
 import type { Outcome } from "./payments/types";
 
@@ -50,6 +52,8 @@ export type RegistrationInput = {
   academyName: string;
   provider: string;
   mobile: string;
+  /** Código de cupão escrito pelo atleta; vazio = sem cupão. */
+  couponCode: string;
 };
 
 export type Started = { registrationId: string; redirectUrl?: string };
@@ -60,8 +64,12 @@ export async function startRegistration(userId: string, input: RegistrationInput
   if (context.closedReason) throw new UserError(context.closedReason);
   const { division } = context;
 
+  const coupon = input.couponCode ? await findUsableCoupon(division.eventId, input.couponCode) : null;
+  const price = computePrice(division.priceCents, division.event, coupon);
+  const isFree = price.priceCents === 0;
+
   // Valida o método antes de gravar o que quer que seja.
-  if (division.priceCents > 0) requireProvider(input.provider, input.mobile);
+  if (!isFree) requireProvider(input.provider, input.mobile);
 
   const athlete = input.athleteId
     ? await prisma.athleteProfile.findFirst({ where: { id: input.athleteId, userId, gender: division.gender } })
@@ -78,10 +86,11 @@ export async function startRegistration(userId: string, input: RegistrationInput
   const existing = await prisma.registration.findUnique({ where: key });
   if (existing?.status === "PAID") throw new UserError("Este atleta já está inscrito nesta categoria");
 
-  const isFree = division.priceCents === 0;
   const data = {
     registeredById: userId,
-    priceCents: division.priceCents,
+    priceCents: price.priceCents,
+    discountCents: price.discountCents,
+    couponId: coupon?.id ?? null,
     status: isFree ? ("PAID" as const) : ("INCOMPLETE" as const),
   };
   const registration = await prisma.registration.upsert({
@@ -293,7 +302,11 @@ export async function getMyRegistration(userId: string, registrationId: string) 
 
   const registration = await prisma.registration.findFirst({
     where,
-    include: { ...registrationSummary, payments: { orderBy: { createdAt: "desc" } } },
+    include: {
+      ...registrationSummary,
+      coupon: { select: { code: true } },
+      payments: { orderBy: { createdAt: "desc" }, include: { refund: { select: { status: true, reason: true } } } },
+    },
   });
   if (!registration) return null;
   return {

@@ -14,6 +14,7 @@ const LAST_NAMES = ["Domingos", "Kiala", "Neto", "dos Santos", "Manuel", "Cassul
 async function main() {
   // Dados de demonstração: recomeça do zero a cada execução.
   await prisma.bracket.deleteMany();
+  await prisma.refund.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.registration.deleteMany();
   await prisma.event.deleteMany();
@@ -56,7 +57,15 @@ async function main() {
       registrationClosesAt: new Date(now + 23 * DAY),
       status: "PUBLISHED",
       sport: "Jiu-Jitsu",
+      earlyDiscountPercent: 20,
+      earlyDiscountEndsAt: new Date(now + 7 * DAY),
       mats: { create: [{ name: "Área 1", sortOrder: 1 }, { name: "Área 2", sortOrder: 2 }] },
+      coupons: {
+        create: [
+          { code: "ACADEMIA10", percentOff: 10 },
+          { code: "PALANCA5000", amountOffCents: 500_000, maxUses: 20, expiresAt: new Date(now + 14 * DAY) },
+        ],
+      },
     },
   });
 
@@ -100,6 +109,8 @@ async function main() {
           academyId: academies[athleteIndex % academies.length].id,
         },
       });
+      // Pagas pelo simulador, para a secção de pagamentos e reembolsos ter conteúdo.
+      // As duas primeiras categorias já passaram pela pesagem, todos dentro do peso.
       await prisma.registration.create({
         data: {
           eventId: event.id,
@@ -108,6 +119,20 @@ async function main() {
           registeredById: owner.id,
           status: "PAID",
           priceCents: division.priceCents,
+          payments: {
+            create: {
+              provider: "SIMULATOR",
+              providerRef: `sim_seed_${athleteIndex}`,
+              amountCents: division.priceCents,
+              chargeCurrency: "AOA",
+              chargeAmountCents: division.priceCents,
+              status: "SUCCEEDED",
+              settledAt: new Date(now - (athleteIndex + 1) * DAY),
+            },
+          },
+          ...(spec.type === "SINGLE_ELIMINATION"
+            ? { weighIn: { create: { weightKg: spec.maxWeightKg - 1.5 - (i % 3) * 0.4, passed: true } } }
+            : {}),
         },
       });
     }

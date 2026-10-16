@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 const controlClass =
   "h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted/70 focus:border-primary focus:ring-2 focus:ring-primary/20";
@@ -30,6 +30,18 @@ export function SelectField({
       <select {...select} className={controlClass}>
         {children}
       </select>
+    </Label>
+  );
+}
+
+export function TextAreaField({ label, ...textarea }: { label: string } & TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <Label label={label}>
+      <textarea
+        rows={5}
+        {...textarea}
+        className={`${controlClass} h-auto min-h-24 py-2 leading-relaxed`}
+      />
     </Label>
   );
 }

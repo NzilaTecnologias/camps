@@ -83,14 +83,18 @@ const eventPath = r.location ? new URL(r.location, BASE).pathname : "";
 check("evento criado redireciona para a página dele", r.status === 303 && /^\/manage\/events\/\w+$/.test(eventPath), `${r.status} ${r.location}`);
 
 r = await alice.get(eventPath);
-check("evento nasce como rascunho", /Rascunho/.test(strip(r.html)) && /20 de março de 2027/.test(strip(r.html)), strip(r.html).slice(0, 300));
+check("evento nasce como rascunho", /Rascunho/.test(strip(r.html)) && /Próximos passos/.test(strip(r.html)), strip(r.html).slice(0, 300));
+const divisionsPath = `${eventPath}/divisions`;
+const settingsPath = `${eventPath}/settings`;
+r = await alice.get(settingsPath);
+check("página do evento traz as datas gravadas", r.html.includes('value="2027-03-20"') && r.html.includes('value="2027-03-13"'));
 const slug = `open-teste-${stamp}`;
 r = await alice.get(`/events/${slug}`);
 check("rascunho não aparece na página pública", !strip(r.html).includes("Categorias"));
 
 // Categoria
-r = await alice.submit(eventPath, 'name="belt"', { gender: "FEMALE", ageGroup: "Adulto", belt: "Roxa", weightClass: "Pena", maxWeightKg: "58,5", price: "120,50" });
-r = await alice.get(eventPath);
+r = await alice.submit(divisionsPath, 'name="belt"', { gender: "FEMALE", ageGroup: "Adulto", belt: "Roxa", weightClass: "Pena", maxWeightKg: "58,5", price: "120,50" });
+r = await alice.get(divisionsPath);
 check("categoria criada com nome, peso e preço", /Adulto Feminino Roxa Pena/.test(strip(r.html)) && /até 58.5 kg/.test(strip(r.html)) && /120,50\sKz/.test(strip(r.html)), strip(r.html).slice(0, 500));
 const divisionPath = r.html.match(new RegExp(`${eventPath}/divisions/\\w+`))?.[0];
 
@@ -138,9 +142,13 @@ check("evento publicado aparece na página pública", strip(r.html).includes("Ad
 // Localização no mapa
 r = await alice.get(`/events/${slug}`);
 check("evento numa cidade desconhecida e sem ponto marcado não mostra mapa", !/Abrir no mapa/.test(strip(r.html)) && /Categorias/.test(strip(r.html)));
-r = await alice.submit(eventPath, "Guardar localização", { latitude: "999", longitude: "13.24" });
+const settingsFields = {
+  name: `Open Teste ${stamp}`, sport: "Jiu-Jitsu", description: "", date: "2027-03-20", endDate: "", registrationOpensOn: "2026-01-01",
+  registrationClosesOn: "2027-03-13", venue: "Arena", city: "Rio",
+};
+r = await alice.submit(settingsPath, "Guardar alterações", { ...settingsFields, latitude: "999", longitude: "13.24" });
 check("coordenadas impossíveis são recusadas", r.html.includes("Localização no mapa inválida"));
-await alice.submit(eventPath, "Guardar localização", { latitude: "-8.8301234", longitude: "13.2401234" });
+await alice.submit(settingsPath, "Guardar alterações", { ...settingsFields, latitude: "-8.8301234", longitude: "13.2401234" });
 r = await alice.get(`/events/${slug}`);
 check(
   "ponto marcado pelo organizador aparece na página do evento",
@@ -164,9 +172,9 @@ check("painel do outro usuário não lista a organização", !strip(r.html).incl
 const publicPath = (managePath) => managePath.replace(eventPath, `/events/${slug}`);
 const divisionLink = (html, name) =>
   html.match(new RegExp(`href="(${eventPath}/divisions/\\w+)"[^>]*>(?:(?!</a>)[\\s\\S])*?${name}`))?.[1];
-await alice.submit(eventPath, 'name="belt"', { gender: "MALE", ageGroup: "Adulto", belt: "Azul", weightClass: "Leve", maxWeightKg: "76", price: "5000" });
-await alice.submit(eventPath, 'name="belt"', { gender: "MALE", ageGroup: "Adulto", belt: "Branca", weightClass: "Leve", maxWeightKg: "76", price: "0" });
-r = await alice.get(eventPath);
+await alice.submit(divisionsPath, 'name="belt"', { gender: "MALE", ageGroup: "Adulto", belt: "Azul", weightClass: "Leve", maxWeightKg: "76", price: "5000" });
+await alice.submit(divisionsPath, 'name="belt"', { gender: "MALE", ageGroup: "Adulto", belt: "Branca", weightClass: "Leve", maxWeightKg: "76", price: "0" });
+r = await alice.get(divisionsPath);
 const managedPaidDivision = divisionLink(r.html, "Azul Leve");
 const paidDivision = publicPath(managedPaidDivision);
 const freeDivision = publicPath(divisionLink(r.html, "Branca Leve"));
@@ -231,16 +239,18 @@ r = await new Browser().submit("/login", "password", { email: `dave${stamp}@test
 check("destino com tab no login é ignorado", r.status === 303 && new URL(r.location, BASE).href === new URL("/", BASE).href, `${r.status} ${r.location}`);
 
 // Áreas de luta e transmissão em direto
-await alice.submit(eventPath, 'placeholder="Área 1"', { name: "Área 1" });
-r = await alice.get(eventPath);
-const matId = r.html.match(/\/scoreboard\/(\w+)/)?.[1];
+const deskPath = `${eventPath}/scoreboard`;
+const streamingPath = `${eventPath}/streaming`;
+await alice.submit(deskPath, 'placeholder="Área 1"', { name: "Área 1" });
+r = await alice.get(deskPath);
+const matId = r.html.match(/href="\/scoreboard\/(\w+)"/)?.[1];
 check("área criada com ligações para o ecrã de TV e a sobreposição", Boolean(matId) && r.html.includes(`/overlay/${matId}`));
-r = await alice.submit(eventPath, 'name="streamUrl"', { streamUrl: "https://malicioso.example/video" });
+r = await alice.submit(streamingPath, 'name="streamUrl"', { streamUrl: "https://malicioso.example/video" });
 check("endereço de transmissão de outro sítio é recusado", r.html.includes("YouTube ou do Facebook"));
-await alice.submit(eventPath, 'name="streamUrl"', { streamUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" });
+await alice.submit(streamingPath, 'name="streamUrl"', { streamUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" });
 r = await alice.get(`/events/${slug}`);
 check("transmissão guardada mas fora do ar não aparece ao público", !r.html.includes("youtube.com/embed"));
-await alice.submit(eventPath, "Pôr em direto");
+await alice.submit(streamingPath, "Pôr em direto");
 r = await alice.get(`/events/${slug}`);
 check(
   "em direto, o leitor aparece na página do evento",
@@ -259,8 +269,8 @@ r = await alice.get(`/live/${matId}`);
 check("página da transmissão embute o vídeo", r.html.includes("https://www.youtube.com/embed/dQw4w9WgXcQ") && /Ao vivo/i.test(strip(r.html)));
 
 // Placar
-await alice.submit(eventPath, 'name="belt"', { gender: "MALE", ageGroup: "Adulto", belt: "Marrom", weightClass: "Leve", maxWeightKg: "76", price: "0" });
-r = await alice.get(eventPath);
+await alice.submit(divisionsPath, 'name="belt"', { gender: "MALE", ageGroup: "Adulto", belt: "Marrom", weightClass: "Leve", maxWeightKg: "76", price: "0" });
+r = await alice.get(divisionsPath);
 const scoreboardDivision = divisionLink(r.html, "Marrom Leve");
 for (const [firstName, lastName] of [["Zola", "Paulo"], ["Wilson", "Manuel"]]) {
   await alice.submit(scoreboardDivision, 'name="firstName"', { firstName, lastName, birthDate: "1997-01-05", academyName: "" });
@@ -317,7 +327,7 @@ check("chave pública mostra a luta a decorrer e os pontos", /A decorrer · Áre
 r = await alice.submit(controlPath, 'name="winner"', { winner: "", method: "Pontos" });
 check("terminar sem vencedor é recusado", r.html.includes("Escolha o vencedor"));
 r = await alice.submit(controlPath, 'name="winner"', { winner: "red", method: "Finalização" });
-check("terminar a luta volta à categoria", r.status === 303 && new URL(r.location, BASE).pathname === scoreboardDivision, `${r.status} ${r.location}`);
+check("terminar a luta volta à mesa do placar", r.status === 303 && new URL(r.location, BASE).pathname === deskPath, `${r.status} ${r.location}`);
 board = await matState();
 check("área fica livre depois da luta", board.scoreboard === null);
 r = await alice.get(scoreboardDivision);
@@ -327,13 +337,101 @@ check(
   strip(r.html).slice(0, 500),
 );
 
-await alice.submit(eventPath, "Terminar direto");
+await alice.submit(streamingPath, "Terminar direto");
 r = await alice.get(`/events/${slug}`);
 check("terminar o direto tira o leitor da página do evento", !r.html.includes("youtube.com/embed"));
 r = await alice.get(`/live/${matId}`);
 check("transmissão terminada já não mostra o vídeo", !r.html.includes("youtube.com/embed") && /terminou/.test(strip(r.html)));
 r = await alice.get("/live");
 check("transmissão terminada sai da página de Transmissão", !r.html.includes(`href="/live/${matId}"`));
+
+// Página do evento
+const discountsPath = `${eventPath}/discounts`;
+await alice.submit(settingsPath, "Guardar alterações", {
+  ...settingsFields, description: "Regulamento IBJJF.\nPesagem no próprio dia.", latitude: "-8.8301234", longitude: "13.2401234",
+});
+r = await alice.get(`/events/${slug}`);
+check("descrição editada aparece na página pública", strip(r.html).includes("Regulamento IBJJF."));
+
+// Descontos e cupões
+r = await alice.submit(discountsPath, 'name="percent"', { percent: "20", endsOn: "2027-04-01" });
+check("desconto antecipado depois do fim das inscrições é recusado", r.html.includes("antes do fim das inscrições"));
+await alice.submit(discountsPath, 'name="percent"', { percent: "20", endsOn: "2027-03-01" });
+r = await alice.submit(discountsPath, 'name="code"', { code: "x", kind: "percent", value: "10", maxUses: "", expiresOn: "" });
+check("código de cupão curto é recusado", r.html.includes("3 a 30 caracteres"));
+await alice.submit(discountsPath, 'name="code"', { code: "carol10", kind: "percent", value: "10", maxUses: "1", expiresOn: "" });
+await alice.submit(discountsPath, 'name="code"', { code: "FIXO", kind: "amount", value: "99999", maxUses: "", expiresOn: "" });
+r = await alice.get(discountsPath);
+check("cupões criados aparecem em maiúsculas", strip(r.html).includes("CAROL10") && strip(r.html).includes("FIXO"));
+
+r = await carol.get(`${paidDivision}/register`);
+check("inscrição mostra o desconto antecipado no resumo", /Desconto antecipado \(20%\)/.test(strip(r.html)) && /4\s000,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 400));
+const newAthlete = (firstName, lastName) => ({ ...athleteFields, firstName, lastName, provider: "SIMULATOR" });
+r = await carol.submit(`${paidDivision}/register`, 'name="athleteId"', { ...newAthlete("Mateus", "Kiala"), couponCode: "NAOEXISTE" });
+check("cupão inexistente é recusado", r.html.includes("NAOEXISTE não existe"));
+r = await carol.submit(`${paidDivision}/register`, 'name="athleteId"', { ...newAthlete("Mateus", "Kiala"), couponCode: " carol10 " });
+const discountedPath = r.location ? new URL(r.location, BASE).pathname : "";
+await carol.submit(discountedPath, "Simular aprovado");
+r = await carol.get(discountedPath);
+check("cupão e desconto antecipado acumulam (5000 −20% −10%)", /3\s600,00\sKz pagos/.test(strip(r.html)) && /cupão CAROL10/.test(strip(r.html)), strip(r.html).slice(0, 400));
+r = await carol.submit(`${paidDivision}/register`, 'name="athleteId"', { ...newAthlete("Gelson", "Paulo"), couponCode: "CAROL10" });
+check("cupão esgotado é recusado", r.html.includes("número máximo de vezes"));
+r = await carol.submit(`${paidDivision}/register`, 'name="athleteId"', { ...newAthlete("Gelson", "Paulo"), couponCode: "FIXO" });
+r = await carol.get(r.location ? new URL(r.location, BASE).pathname : "/nao-redirecionou");
+check("cupão maior que o preço deixa a inscrição grátis, sem pagamento", /Inscrição confirmada ?\./.test(strip(r.html)), strip(r.html).slice(0, 300));
+r = await carol.submit(`${paidDivision}/register`, 'name="athleteId"', newAthlete("Hélder", "Gomes"));
+const unpaidPath = r.location ? new URL(r.location, BASE).pathname : "";
+
+// Inscrições no painel
+const registrationsPath = `${eventPath}/registrations`;
+r = await alice.get(registrationsPath);
+page = strip(r.html);
+check("painel lista as inscrições com responsável e desconto", /Mateus Kiala/.test(page) && page.includes(`carol${stamp}@teste.local`) && /CAROL10/.test(page), page.slice(0, 400));
+r = await alice.get(`${registrationsPath}?status=INCOMPLETE`);
+check("filtro por estado mostra só as por pagar", /Hélder Gomes/.test(strip(r.html)) && !/Mateus Kiala/.test(strip(r.html)));
+r = await alice.get(`${registrationsPath}?q=gelson`);
+check("pesquisa encontra o atleta pelo nome", /Gelson Paulo/.test(strip(r.html)) && !/Hélder Gomes/.test(strip(r.html)));
+r = await bob.get(registrationsPath);
+check("outro utilizador não vê as inscrições do evento", !/Mateus Kiala/.test(strip(r.html)));
+await alice.submit(`${registrationsPath}?status=INCOMPLETE`, "Cancelar");
+r = await carol.get(unpaidPath);
+check("organizador cancela inscrição por pagar", /Esta inscrição foi cancelada/.test(strip(r.html)), strip(r.html).slice(0, 300));
+
+// Pesagem
+const weighInPath = `${eventPath}/weigh-in?division=${managedPaidDivision.split("/").pop()}`;
+r = await alice.submit(weighInPath, 'name="weight"', { weight: "5" });
+check("peso absurdo é recusado", r.html.includes("Peso inválido"));
+await alice.submit(weighInPath, 'name="weight"', { weight: "80,4" });
+r = await alice.get(weighInPath);
+check("atleta acima do limite fica fora do peso", /80,4 kg · fora do peso/.test(strip(r.html)), strip(r.html).slice(0, 400));
+await alice.submit(weighInPath, 'name="weight"', { weight: "75" }, 1);
+r = await alice.get(weighInPath);
+check("atleta dentro do limite é aprovado", /75 kg · aprovado/.test(strip(r.html)));
+
+// Reembolso
+const paymentsPath = `${eventPath}/payments`;
+r = await alice.submit(paymentsPath, "Devolver 3", { reason: "", manual: "0" });
+check("reembolso sem motivo é recusado", r.html.includes("motivo do reembolso"));
+await alice.submit(paymentsPath, "Devolver 3", { reason: "Lesão no treino", manual: "0" });
+r = await alice.get(paymentsPath);
+check("pagamento reembolsado aparece com o motivo", /Reembolsado/.test(strip(r.html)) && /Lesão no treino/.test(strip(r.html)), strip(r.html).slice(0, 400));
+r = await carol.get(discountedPath);
+check("atleta vê a inscrição cancelada e reembolsada", /cancelada e reembolsada/.test(strip(r.html)) && /3\s600,00\sKz devolvidos/.test(strip(r.html)), strip(r.html).slice(0, 300));
+r = await carol.get(paidDivision);
+check("inscrição reembolsada sai da lista pública", !/Mateus Kiala/.test(strip(r.html)));
+
+// Chaves em falta
+await alice.submit(divisionsPath, 'name="belt"', { gender: "FEMALE", ageGroup: "Adulto", belt: "Preta", weightClass: "Pesado", maxWeightKg: "", price: "0" });
+r = await alice.get(divisionsPath);
+const blackBelt = divisionLink(r.html, "Preta Pesado");
+for (const [firstName, lastName] of [["Nzinga", "Mbandi"], ["Lueji", "Ankonde"]]) {
+  await alice.submit(blackBelt, 'name="firstName"', { firstName, lastName, birthDate: "1995-02-01", academyName: "" });
+}
+await alice.submit(`${eventPath}/brackets`, "Gerar chaves em falta", { type: "ROUND_ROBIN" });
+r = await alice.get(blackBelt);
+check("gerar chaves em falta cria a chave da nova categoria", /Todos contra todos/.test(strip(r.html)), strip(r.html).slice(0, 300));
+r = await alice.get(eventPath);
+check("visão geral conta as inscrições e a receita", /Inscrições confirmadas/.test(strip(r.html)) && /Receita líquida/.test(strip(r.html)));
 
 // Sair e entrar
 await alice.submit("/manage", "Sair");

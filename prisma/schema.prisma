@@ -44,6 +44,12 @@ enum PaymentProvider {
   SIMULATOR
 }
 
+enum RefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
 enum BracketType {
   SINGLE_ELIMINATION
   ROUND_ROBIN
@@ -73,6 +79,7 @@ model User {
   memberships   OrganizerMember[]
   registrations Registration[]    @relation("RegisteredBy")
   sessions      Session[]
+  refunds       Refund[]
 }
 
 model Session {
@@ -166,6 +173,9 @@ model Event {
   latitude             Float?
   longitude            Float?
   capacity             Int?
+  /// Desconto automático para quem se inscreve cedo: percentagem e último instante em que vale.
+  earlyDiscountPercent Int?
+  earlyDiscountEndsAt  DateTime?
   createdAt            DateTime    @default(now())
 
   organizer     Organizer      @relation(fields: [organizerId], references: [id])
@@ -203,12 +213,15 @@ model Division {
 model Coupon {
   id             String    @id @default(cuid())
   eventId        String
+  /// Sempre em maiúsculas; o atleta pode escrevê-lo de qualquer maneira.
   code           String
   percentOff     Int?
   amountOffCents Int?
+  /// Quantas inscrições pagas o podem usar; os usos contam-se nas inscrições.
   maxUses        Int?
-  usedCount      Int       @default(0)
   expiresAt      DateTime?
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
 
   event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
   registrations Registration[]
@@ -225,6 +238,8 @@ model Registration {
   status         RegistrationStatus @default(INCOMPLETE)
   /// Preço final já com desconto, congelado no momento da inscrição.
   priceCents     Int
+  /// Quanto foi descontado do preço da categoria (desconto antecipado + cupão).
+  discountCents  Int                @default(0)
   couponId       String?
   seed           Int?
   createdAt      DateTime           @default(now())
@@ -262,9 +277,29 @@ model Payment {
   settledAt      DateTime?
 
   registration Registration @relation(fields: [registrationId], references: [id])
+  refund       Refund?
 
   @@unique([provider, providerRef])
   @@index([registrationId])
+}
+
+/// Devolução total de um pagamento, pedida pelo organizador.
+model Refund {
+  id            String       @id @default(cuid())
+  paymentId     String       @unique
+  status        RefundStatus @default(PENDING)
+  /// Devolvido fora da plataforma (numerário, transferência): fica só registado.
+  manual        Boolean      @default(false)
+  /// Identificador da devolução no provedor.
+  providerRef   String?
+  reason        String
+  failureReason String?
+  requestedById String
+  createdAt     DateTime     @default(now())
+  settledAt     DateTime?
+
+  payment     Payment @relation(fields: [paymentId], references: [id])
+  requestedBy User    @relation(fields: [requestedById], references: [id])
 }
 
 model WeighIn {

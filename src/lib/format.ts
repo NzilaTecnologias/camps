@@ -71,3 +71,14 @@ export function formatDateRange(start: Date, end: Date, now = new Date()): strin
   if (s.year === e.year && s.month === e.month) return `${s.day} – ${e.day} ${month(end)}${year}`;
   return `${s.day} ${month(start)} – ${e.day} ${month(end)}${year}`;
 }
+
+/** Data no formato dos campos `<input type="date">` (AAAA-MM-DD), no fuso de Luanda. */
+export function toDateInput(date: Date | null): string {
+  if (!date) return "";
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
+/** Peso medido na pesagem: "72,4 kg". */
+export function formatKg(weightKg: { toString(): string }) {
+  return `${new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 2 }).format(Number(weightKg.toString()))} kg`;
+}

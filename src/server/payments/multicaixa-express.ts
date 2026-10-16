@@ -67,12 +67,34 @@ export const multicaixaExpress: PaymentProvider = {
   },
 
   async check(providerRef): Promise<Outcome> {
-    const transaction = await request(`/opg/v1/transactions/${encodeURIComponent(providerRef)}`);
-    if (transaction.status === "accepted") return { status: "SUCCEEDED" };
-    if (transaction.status === "rejected") {
-      const reason = REJECTION_REASONS[String(transaction.status_reason)] ?? "Pagamento recusado";
-      return { status: "FAILED", reason };
-    }
-    return { status: "PENDING" };
+    return transactionOutcome(providerRef, "Pagamento recusado");
+  },
+
+  // A OPG só faz devoluções totais: uma transação "refund" ligada ao pagamento original.
+  async refund({ refundId, providerRef, appUrl }) {
+    const transaction = await request("/opg/v1/transactions", {
+      method: "POST",
+      headers: { "Idempotency-Key": refundId },
+      body: JSON.stringify({
+        type: "refund",
+        parent_transaction_id: providerRef,
+        ...(appUrl.startsWith("https://") ? { callback_url: `${appUrl}/api/payments/multicaixa-express/callback` } : {}),
+      }),
+    });
+    if (transaction.id == null) throw new Error("ProxyPay não devolveu o id da devolução");
+    return { refundRef: String(transaction.id), outcome: { status: "PENDING" } };
+  },
+
+  async checkRefund(refundRef) {
+    return transactionOutcome(refundRef, "Devolução recusada");
   },
 };
+
+async function transactionOutcome(id: string, rejected: string): Promise<Outcome> {
+  const transaction = await request(`/opg/v1/transactions/${encodeURIComponent(id)}`);
+  if (transaction.status === "accepted") return { status: "SUCCEEDED" };
+  if (transaction.status === "rejected") {
+    return { status: "FAILED", reason: REJECTION_REASONS[String(transaction.status_reason)] ?? rejected };
+  }
+  return { status: "PENDING" };
+}

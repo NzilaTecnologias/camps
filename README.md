@@ -18,6 +18,25 @@ npm run dev          # http://localhost:3000
 
 O seed cria a conta `organizador@camps.local` com a palavra-passe `camps-demo`, só para desenvolvimento local. O painel do organizador fica em `/manage`.
 
+## Área do organizador
+
+Cada evento tem um painel próprio em `/manage/events/<id>`, com um menu por secção:
+
+| Secção | O que faz |
+|---|---|
+| Visão geral | Indicadores (inscrições, receita, pesagem, chaves, direto) e lista de próximos passos |
+| Página do evento | Nome, modalidade, descrição, datas, janela de inscrições, local e ponto no mapa; cancelar o evento |
+| Categorias | Criar categorias e abrir cada uma (chave, pódio, inscrição manual) |
+| Inscrições | Lista com filtros por estado, categoria e pesquisa; cancelar inscrições por pagar ou gratuitas |
+| Descontos e cupões | Desconto antecipado (percentagem até uma data) e cupões de percentagem ou valor fixo, com limite de usos e validade. Os dois acumulam |
+| Pagamentos e reembolsos | Totais cobrados e reembolsados; reembolso total pelo provedor (ProxyPay `type: refund`, PayPal refund da captura) ou registo de devolução feita fora da plataforma |
+| Pesagem | Peso de cada atleta confirmado; quem fica acima do limite sai da chave quando ela é gerada |
+| Chaves | Estado de cada categoria, gerar ou regerar, e gerar de uma vez as que faltam |
+| Placar e áreas | Áreas de luta, a luta em cada placar e as lutas prontas para chamar |
+| Transmissão | Endereço do YouTube/Facebook por área, pôr e tirar do ar, sobreposição para o OBS |
+
+Um reembolso confirmado passa o pagamento a `REFUNDED` e cancela a inscrição. Uma inscrição paga só se cancela reembolsando-a.
+
 ## Pagamentos
 
 A plataforma opera em Angola: preços em kwanzas (AOA), fuso de Luanda.

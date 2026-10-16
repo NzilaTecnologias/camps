@@ -199,3 +199,38 @@ describe("safeNext", () => {
     expect(safeNext("")).toBe("/");
   });
 });
+
+describe("reembolsos", () => {
+  const refundInput = { refundId: "ref_1", providerRef: "987", appUrl: "https://camps.example" };
+
+  it("Multicaixa Express pede uma transação refund ligada ao pagamento", async () => {
+    const calls = mockFetch({ status: 201, body: { id: 555, type: "refund", parent_transaction_id: "987" } });
+    expect(await multicaixaExpress.refund(refundInput)).toEqual({ refundRef: "555", outcome: { status: "PENDING" } });
+    expect(calls[0].url).toBe("https://api.sandbox.proxypay.co.ao/opg/v1/transactions");
+    expect(header(calls[0], "Idempotency-Key")).toBe("ref_1");
+    expect(jsonBody(calls[0])).toEqual({
+      type: "refund",
+      parent_transaction_id: "987",
+      callback_url: "https://camps.example/api/payments/multicaixa-express/callback",
+    });
+
+    mockFetch({ body: { id: 555, status: "accepted" } });
+    expect(await multicaixaExpress.checkRefund("555")).toEqual({ status: "SUCCEEDED" });
+  });
+
+  it("PayPal devolve a captura da ordem", async () => {
+    const token = { body: { access_token: "tok" } };
+    const calls = mockFetch(
+      token,
+      { body: { id: "ORDER-1", status: "COMPLETED", purchase_units: [{ payments: { captures: [{ id: "CAP-9", status: "COMPLETED" }] } }] } },
+      token,
+      { status: 201, body: { id: "REF-3", status: "COMPLETED" } },
+    );
+    expect(await paypal.refund({ ...refundInput, providerRef: "ORDER-1" })).toEqual({
+      refundRef: "REF-3",
+      outcome: { status: "SUCCEEDED" },
+    });
+    expect(calls[3].url).toBe("https://api-m.sandbox.paypal.com/v2/payments/captures/CAP-9/refund");
+    expect(header(calls[3], "PayPal-Request-Id")).toBe("ref_1");
+  });
+});

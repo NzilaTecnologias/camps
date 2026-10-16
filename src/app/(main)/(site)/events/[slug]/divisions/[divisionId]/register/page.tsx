@@ -6,6 +6,7 @@ import { Field, SelectField } from "@/components/field";
 import { PaymentFields } from "@/components/payment-fields";
 import { BackLink, Card, Empty, Icon, PageTitle } from "@/components/ui";
 import { formatDate, formatMoney, formatWeight } from "@/lib/format";
+import { computePrice } from "@/lib/pricing";
 import { requireUser } from "@/server/auth";
 import { getRegistrationContext } from "@/server/registrations";
 
@@ -15,8 +16,11 @@ async function RegisterForm({ params }: { params: Promise<{ slug: string; divisi
   const context = await getRegistrationContext(user.id, slug, divisionId);
   if (!context) notFound();
   const { division, athletes, providers, closedReason } = context;
+  const { currency } = division.event;
+  // Preço antes do cupão; o cupão só se conhece ao submeter e é validado no servidor.
+  const quote = computePrice(division.priceCents, division.event, null);
   const isFree = division.priceCents === 0;
-  const price = isFree ? "gratuita" : formatMoney(division.priceCents, division.event.currency);
+  const price = quote.priceCents === 0 ? "gratuita" : formatMoney(quote.priceCents, currency);
 
   return (
     <>
@@ -53,7 +57,19 @@ async function RegisterForm({ params }: { params: Promise<{ slug: string; divisi
                 <Field label="Academia" name="academyName" />
               </fieldset>
 
-              {!isFree && <PaymentFields providers={providers} />}
+              {!isFree && (
+                <>
+                  <Field
+                    label="Código de desconto (opcional)"
+                    name="couponCode"
+                    autoComplete="off"
+                    placeholder="Ex.: ACADEMIA10"
+                    maxLength={30}
+                  />
+                  <PaymentFields providers={providers} />
+                  <p className="-mt-2 text-xs text-muted">Se o cupão deixar a inscrição a zero, não é pedido pagamento.</p>
+                </>
+              )}
             </ActionForm>
           </Card>
         )}
@@ -77,8 +93,25 @@ async function RegisterForm({ params }: { params: Promise<{ slug: string; divisi
                 <Icon name="calendar" />
                 {formatDate(division.event.startsAt)}
               </div>
+              {quote.applied.length > 0 && (
+                <div className="space-y-1 border-t border-line pt-3">
+                  <div className="flex justify-between text-muted">
+                    <dt>Preço da categoria</dt>
+                    <dd className="tabular-nums">{formatMoney(quote.baseCents, currency)}</dd>
+                  </div>
+                  {quote.applied.map((discount) => (
+                    <div key={discount.label} className="flex justify-between text-success">
+                      <dt>{discount.label}</dt>
+                      <dd className="tabular-nums">−{formatMoney(discount.cents, currency)}</dd>
+                    </div>
+                  ))}
+                  {division.event.earlyDiscountEndsAt && (
+                    <p className="text-xs text-muted">Válido até {formatDate(division.event.earlyDiscountEndsAt)}</p>
+                  )}
+                </div>
+              )}
               <div className="flex items-end justify-between border-t border-line pt-3">
-                <dt className="text-xs uppercase tracking-wider text-muted">Total</dt>
+                <dt className="text-xs uppercase tracking-wider text-muted">Total{!isFree && " sem cupão"}</dt>
                 <dd className="font-display text-2xl font-bold leading-none">{price}</dd>
               </div>
             </dl>

@@ -4,7 +4,8 @@ import { ActionForm } from "@/components/action-form";
 import { BracketView, type BracketMatchDetails } from "@/components/bracket-view";
 import { Podium, RegistrantList } from "@/components/division-parts";
 import { Field, SelectField } from "@/components/field";
-import { BackLink, Badge, Card, Empty, LinkButton, PageTitle, SectionTitle, buttonClass } from "@/components/ui";
+import { SectionHeader } from "@/components/manage/parts";
+import { BackLink, Badge, Card, Empty, LinkButton, SectionTitle, buttonClass } from "@/components/ui";
 import { BRACKET_TYPE_LABEL, count } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { getManagedDivision } from "@/server/manage";
@@ -45,14 +46,18 @@ async function DivisionPanel({ params }: { params: Promise<{ eventId: string; di
 
   return (
     <>
-      <BackLink href={`/manage/events/${division.event.id}`}>{division.event.name}</BackLink>
-      <header className="mt-3 mb-8 border-b border-line pb-6">
-        <PageTitle>{division.name}</PageTitle>
-        <p className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted">
-          <span>{count(division.registrations.length, "inscrito", "inscritos")}</span>
-          {bracket ? <Badge tone="primary">{BRACKET_TYPE_LABEL[bracket.type]}</Badge> : <Badge>sem chave</Badge>}
-        </p>
-      </header>
+      <BackLink href={`/manage/events/${division.event.id}/divisions`}>Categorias</BackLink>
+      <div className="mt-3">
+        <SectionHeader
+          title={division.name}
+          description={
+            <span className="flex flex-wrap items-center gap-3">
+              <span>{count(division.registrations.length, "inscrito", "inscritos")}</span>
+              {bracket ? <Badge tone="primary">{BRACKET_TYPE_LABEL[bracket.type]}</Badge> : <Badge>sem chave</Badge>}
+            </span>
+          }
+        />
+      </div>
 
       <section className="mb-10">
         <SectionTitle>Chave{bracket && ` · ${BRACKET_TYPE_LABEL[bracket.type]}`}</SectionTitle>
@@ -91,7 +96,7 @@ async function DivisionPanel({ params }: { params: Promise<{ eventId: string; di
         </section>
       )}
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_22rem]">
+      <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <section>
           <SectionTitle>Inscritos ({division.registrations.length})</SectionTitle>
           <RegistrantList registrations={division.registrations} />

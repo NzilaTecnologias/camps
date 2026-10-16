@@ -66,12 +66,13 @@ async function ScoreboardControl({ params }: { params: Promise<{ matchId: string
   const control = await getScoreboardControl(user.id, matchId);
   if (!control) notFound();
   const { state, mats } = control;
-  const divisionPath = `/manage/events/${control.eventId}/divisions/${control.divisionId}`;
+  // Ao terminar a luta, a mesa volta à lista de áreas e lutas prontas.
+  const deskPath = `/manage/events/${control.eventId}/scoreboard`;
   const isRunning = state.clock.startedAt !== null;
 
   return (
     <>
-      <BackLink href={divisionPath}>{state.divisionName}</BackLink>
+      <BackLink href={deskPath}>Placar e áreas · {state.eventName}</BackLink>
       <header className="mt-3 mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-line pb-6">
         <div>
           <PageTitle>Placar</PageTitle>
@@ -165,7 +166,7 @@ async function ScoreboardControl({ params }: { params: Promise<{ matchId: string
               <Card className="p-5">
                 <h2 className="mb-4 font-display text-xl font-bold uppercase leading-none">Terminar a luta</h2>
                 <ActionForm
-                  action={finishMatchAction.bind(null, state.matchId, divisionPath)}
+                  action={finishMatchAction.bind(null, state.matchId, deskPath)}
                   submitLabel="Terminar e gravar resultado"
                   className="grid items-end gap-4 sm:grid-cols-[1fr_1fr_auto]"
                 >

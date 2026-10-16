@@ -37,4 +37,18 @@ export interface PaymentProvider {
    * callbacks e retornos do navegador só servem de aviso para vir perguntar.
    */
   check(providerRef: string): Promise<Outcome>;
+  /** Pede a devolução total de um pagamento concluído. */
+  refund(input: RefundInput): Promise<RefundStarted>;
+  /** Estado de uma devolução pedida antes. */
+  checkRefund(refundRef: string): Promise<Outcome>;
 }
+
+export type RefundInput = {
+  /** Id do nosso Refund: chave de idempotência no provedor. */
+  refundId: string;
+  /** Referência do pagamento original no provedor. */
+  providerRef: string;
+  appUrl: string;
+};
+
+export type RefundStarted = { refundRef: string; outcome: Outcome };

@@ -10,8 +10,10 @@ type Order = {
   id?: string;
   status?: string;
   links?: Link[];
-  purchase_units?: { payments?: { captures?: { status?: string }[] } }[];
+  purchase_units?: { payments?: { captures?: { id?: string; status?: string }[] } }[];
 };
+
+type PayPalRefund = { id?: string; status?: string };
 
 function config() {
   return {
@@ -47,7 +49,7 @@ async function accessToken(): Promise<string> {
   return ((await response.json()) as { access_token: string }).access_token;
 }
 
-async function request(path: string, init: RequestInit = {}): Promise<Order> {
+async function request<T = Order>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${config().baseUrl}${path}`, {
     ...init,
     headers: {
@@ -59,7 +61,15 @@ async function request(path: string, init: RequestInit = {}): Promise<Order> {
   if (!response.ok) {
     throw new Error(`PayPal respondeu ${response.status} em ${path}: ${await response.text()}`);
   }
-  return (await response.json()) as Order;
+  return (await response.json()) as T;
+}
+
+function refundOutcome(refund: PayPalRefund): Outcome {
+  if (refund.status === "COMPLETED") return { status: "SUCCEEDED" };
+  if (refund.status === "CANCELLED" || refund.status === "FAILED") {
+    return { status: "FAILED", reason: "O PayPal recusou a devolução" };
+  }
+  return { status: "PENDING" };
 }
 
 function captureOutcome(order: Order): Outcome {
@@ -123,5 +133,23 @@ export const paypal: PaymentProvider = {
 
     // O utilizador aprovou: é a captura que move o dinheiro.
     return captureOutcome(await request(`${path}/capture`, { method: "POST", headers: { "PayPal-Request-Id": providerRef } }));
+  },
+
+  // Devolve-se a captura, não a ordem: o id dela está na própria ordem.
+  async refund({ refundId, providerRef }) {
+    const order = await request(`/v2/checkout/orders/${encodeURIComponent(providerRef)}`);
+    const captureId = order.purchase_units?.[0]?.payments?.captures?.[0]?.id;
+    if (!captureId) throw new Error(`A ordem PayPal ${providerRef} não tem captura para devolver`);
+    const refund = await request<PayPalRefund>(`/v2/payments/captures/${encodeURIComponent(captureId)}/refund`, {
+      method: "POST",
+      headers: { "PayPal-Request-Id": refundId },
+      body: "{}",
+    });
+    if (!refund.id) throw new Error("PayPal não devolveu o id da devolução");
+    return { refundRef: refund.id, outcome: refundOutcome(refund) };
+  },
+
+  async checkRefund(refundRef) {
+    return refundOutcome(await request<PayPalRefund>(`/v2/payments/refunds/${encodeURIComponent(refundRef)}`));
   },
 };

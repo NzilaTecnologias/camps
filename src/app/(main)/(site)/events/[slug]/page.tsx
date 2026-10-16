@@ -7,6 +7,7 @@ import { BackLink, Badge, Empty, Icon, RowList, SectionTitle } from "@/component
 import { eventLocation } from "@/lib/geo";
 import { parseStreamUrl } from "@/lib/stream";
 import { formatDate, formatMoney, formatWeight, count } from "@/lib/format";
+import { earlyDiscountActive } from "@/lib/pricing";
 import { getPublishedEvent } from "@/server/events";
 import { registrationClosedReason } from "@/server/registrations";
 import { Reveal } from "@/components/reveal";
@@ -32,12 +33,17 @@ async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
         <header className="hero mt-3 mb-10 rounded-2xl px-6 py-10 sm:px-10">
           <div className="flex flex-wrap items-center gap-3">
             {closedReason ? <Badge tone="inverse">{closedReason}</Badge> : <Badge tone="accent">Inscrições abertas</Badge>}
+            {!closedReason && earlyDiscountActive(event) && (
+              <Badge tone="inverse">
+                −{event.earlyDiscountPercent}% até {formatDate(event.earlyDiscountEndsAt!)}
+              </Badge>
+            )}
             <span className="text-sm text-white/60">Organização: {event.organizer.name}</span>
           </div>
           <h1 className="mt-4 font-display text-5xl font-bold uppercase leading-[0.95] tracking-tight sm:text-6xl">
             {event.name}
           </h1>
-          {event.description && <p className="mt-3 max-w-2xl text-white/75">{event.description}</p>}
+          {event.description && <p className="mt-3 max-w-2xl whitespace-pre-line text-white/75">{event.description}</p>}
           <dl className="mt-7 grid gap-4 text-sm sm:grid-cols-3">
             <div className="flex items-start gap-3">
               <Icon name="calendar" className="mt-0.5 h-5 w-5 text-accent" />
