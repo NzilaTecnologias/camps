@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import Image from "next/image";
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
@@ -187,6 +188,10 @@ function FeatureCard({ title, muted, children }: { title: string; muted: string;
 }
 
 async function UpcomingEvents() {
+  // Os dados vêm de cache, mas "inscrições abertas", "faltam N dias" e o ano das datas dependem
+  // da hora deste pedido: a parte da página com eles é sempre calculada no momento.
+  await connection();
+
   const events = await listPublishedEvents(4);
   if (events.length === 0) {
     return (

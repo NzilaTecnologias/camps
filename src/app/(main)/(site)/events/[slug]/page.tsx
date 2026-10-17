@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -13,6 +14,10 @@ import { registrationClosedReason } from "@/server/registrations";
 import { Reveal } from "@/components/reveal";
 
 async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
+  // Os dados vêm de cache, mas "inscrições abertas", "faltam N dias" e o ano das datas dependem
+  // da hora deste pedido: a parte da página com eles é sempre calculada no momento.
+  await connection();
+
   const { slug } = await params;
   const event = await getPublishedEvent(slug);
   if (!event) notFound();

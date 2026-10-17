@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
@@ -87,6 +88,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     where: { tokenHash: hashToken(token) },
     select: { expiresAt: true, user: { select: { id: true, name: true, email: true } } },
   });
+  await connection();
   if (!session || session.expiresAt < new Date()) return null;
   return session.user;
 });

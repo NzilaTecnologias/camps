@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import Link from "next/link";
 import { Suspense } from "react";
 import { AutoSubmitForm } from "@/components/auto-submit-form";
@@ -70,6 +71,10 @@ function Tabs({ when }: { when: "upcoming" | "past" }) {
 }
 
 async function EventsBrowser({ searchParams }: { searchParams: SearchParams }) {
+  // Os dados vêm de cache, mas "inscrições abertas", "faltam N dias" e o ano das datas dependem
+  // da hora deste pedido: a parte da página com eles é sempre calculada no momento.
+  await connection();
+
   const params = await searchParams;
   const { raw, filters, active } = readFilters(params);
   const page = readPage(params.page);

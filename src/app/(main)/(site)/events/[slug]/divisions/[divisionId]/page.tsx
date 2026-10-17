@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { AutoRefresh } from "@/components/auto-refresh";
@@ -9,6 +10,10 @@ import { getDivision } from "@/server/events";
 import { registrationClosedReason } from "@/server/registrations";
 
 async function DivisionDetails({ params }: { params: Promise<{ slug: string; divisionId: string }> }) {
+  // Os dados vêm de cache, mas "inscrições abertas", "faltam N dias" e o ano das datas dependem
+  // da hora deste pedido: a parte da página com eles é sempre calculada no momento.
+  await connection();
+
   const { slug, divisionId } = await params;
   const division = await getDivision(slug, divisionId);
   if (!division) notFound();

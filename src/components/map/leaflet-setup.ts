@@ -13,6 +13,18 @@ export async function loadLeaflet(): Promise<typeof Leaflet> {
   return (await import("leaflet")).default;
 }
 
+/** Marcador de grupo: círculo com o número de eventos que estão sobrepostos nesse sítio. */
+export function groupIcon(L: typeof Leaflet, count: number) {
+  const size = count < 10 ? 38 : 44;
+  return L.divIcon({
+    className: "",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
+    html: `<div style="width:${size}px;height:${size}px;border-radius:9999px;background:#d21f2b;border:3px solid #fff;box-shadow:0 2px 6px rgb(0 0 0 / .4);display:flex;align-items:center;justify-content:center;color:#fff;font:700 15px/1 system-ui,sans-serif">${count}</div>`,
+  });
+}
+
 /** Marcador vermelho desenhado em SVG, para não depender das imagens por omissão do Leaflet. */
 export function pinIcon(L: typeof Leaflet, muted = false) {
   const color = muted ? "#6b7280" : "#d21f2b";
