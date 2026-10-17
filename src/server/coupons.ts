@@ -22,12 +22,27 @@ export async function findUsableCoupon(eventId: string, rawCode: string, now = n
   return coupon;
 }
 
-export function listCoupons(userId: string, eventId: string) {
-  return prisma.coupon.findMany({
-    where: { eventId, event: memberOf(userId) },
-    orderBy: [{ active: "desc" }, { createdAt: "desc" }],
-    include: usesCount,
-  });
+/**
+ * Cupões do evento com `_count.registrations` (usos: inscrições pagas) e `applied`
+ * (inscrições de qualquer estado que o têm). Só se pode apagar um cupão com `applied` a 0.
+ */
+export async function listCoupons(userId: string, eventId: string) {
+  const [coupons, applied] = await Promise.all([
+    prisma.coupon.findMany({
+      where: { eventId, event: memberOf(userId) },
+      orderBy: [{ active: "desc" }, { createdAt: "desc" }],
+      include: usesCount,
+    }),
+    prisma.registration.groupBy({
+      by: ["couponId"],
+      where: { eventId, event: memberOf(userId), couponId: { not: null } },
+      _count: true,
+    }),
+  ]);
+  return coupons.map((coupon) => ({
+    ...coupon,
+    applied: applied.find((row) => row.couponId === coupon.id)?._count ?? 0,
+  }));
 }
 
 async function requireEvent(userId: string, eventId: string) {

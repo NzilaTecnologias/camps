@@ -56,7 +56,7 @@ export async function signUp(input: { name: string; email: string; password: str
 
 export async function logIn(input: { email: string; password: string }) {
   const email = input.email.trim().toLowerCase();
-  const minutes = lockedForMinutes(email);
+  const minutes = await lockedForMinutes(email);
   if (minutes > 0) {
     throw new UserError(`Demasiadas tentativas falhadas. Tente novamente dentro de ${minutes} min.`);
   }
@@ -66,10 +66,10 @@ export async function logIn(input: { email: string; password: string }) {
   dummyHash ??= hashPassword("senha-que-ninguem-usa");
   const valid = await verifyPassword(input.password, user?.passwordHash ?? (await dummyHash));
   if (!user || !valid) {
-    recordFailure(email);
+    await recordFailure(email);
     throw new UserError("E-mail ou palavra-passe incorretos");
   }
-  clearFailures(email);
+  await clearFailures(email);
   await createSession(user.id);
 }
 

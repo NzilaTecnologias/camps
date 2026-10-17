@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { clockRemainingMs, formatClock, type Clock, type ScoreboardState } from "@/lib/scoreboard";
 import type { MatState } from "@/server/scoreboard";
 
@@ -39,11 +39,15 @@ function useMatState(matId: string): MatState | null | undefined {
 export function LiveClock({ clock, serverNow, className }: { clock: Clock; serverNow: number; className?: string }) {
   // Estimativa local da hora do servidor; até ao primeiro tique vale a que veio na resposta.
   const [tick, setTick] = useState<number | null>(null);
+  // As respostas podem vir de uma cache (até ~1 s), com `serverNow` atrasado. Um atraso só
+  // pode fazer a diferença parecer menor, por isso fica-se com a maior já vista.
+  const bestOffset = useRef<number | null>(null);
 
   useEffect(() => {
+    const sample = serverNow - Date.now();
+    if (bestOffset.current === null || sample > bestOffset.current) bestOffset.current = sample;
     if (clock.startedAt === null) return;
-    const offset = serverNow - Date.now();
-    const timer = setInterval(() => setTick(Date.now() + offset), 200);
+    const timer = setInterval(() => setTick(Date.now() + (bestOffset.current ?? 0)), 200);
     return () => clearInterval(timer);
   }, [clock.startedAt, serverNow]);
 

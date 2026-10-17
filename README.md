@@ -85,12 +85,19 @@ A página inicial usa fotografias de uso livre do Wikimedia Commons, em `public/
 | `images/taekwondo.jpg` | [Img notipGO5DLrPzS](https://commons.wikimedia.org/wiki/File:Img_notipGO5DLrPzS.jpg), por Tomas Peruzzo | CC0 |
 | `images/torneio-infantil.jpg` | [Karate tournament for Kids](https://commons.wikimedia.org/wiki/File:Karate_tournament_for_Kids.jpg), por Samson Ssemakadde | CC0 |
 
+## Escala e produção
+
+A arquitetura está preparada para 1 milhão de utilizadores: caches partilhadas, tarefa de fundo, limites de pedidos, índices e paginação. Topologia, medições, plano de capacidade e passos de implantação estão em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
+
 ## Comandos
 
 | Comando | O que faz |
 |---|---|
 | `npm test` | Testes unitários (motor de chaves, palavra-passe, pagamentos) |
-| `npm run test:e2e` | Percorre registo, painel, chave, resultados, inscrição e pagamento pelo HTTP. Precisa do app rodando e grava dados de teste no banco; `npm run db:seed` limpa depois |
+| `npm run test:e2e` | Percorre registo, painel, chave, resultados, inscrição e pagamento pelo HTTP (`scripts/e2e.mjs` e `scripts/e2e-extra.mjs`). Precisa do app rodando e grava dados de teste no banco; `npm run db:seed` limpa depois |
+| `node scripts/load-test.mjs <url> [clientes] [segundos]` | Teste de carga simples; com `--pg=<DATABASE_URL>` conta as transações no Postgres |
+| `npx tsx scripts/seed-scale.ts [utilizadores]` | Dados em massa para testes de carga (nunca numa base real) |
+| `npx tsx scripts/explain.ts` · `npx tsx scripts/check-stats.ts` | Tempos e planos das consultas pesadas · conferência dos rankings pré-calculados |
 | `npm run typecheck` | Checagem de tipos |
 | `npm run lint` | ESLint |
 
@@ -102,5 +109,7 @@ A página inicial usa fotografias de uso livre do Wikimedia Commons, em `public/
 - `src/server/auth.ts` — cadastro, login e sessões (cookie httpOnly, token guardado como hash no banco)
 - `src/server/manage.ts` — operações do painel, sempre restritas às organizações do usuário logado
 - `src/server/scoreboard.ts` — placar, cronómetro, áreas de luta e transmissão
+- `src/server/kv.ts` — cache, limites e bloqueios partilhados (Redis ou memória)
+- `src/server/jobs.ts` — trabalho de fundo (pagamentos, reembolsos, rankings, sessões)
 - `src/app/(main)/` — página inicial e, em `(site)/`, páginas públicas, login/registo e painel (`/manage`)
 - `src/app/(bare)/` — ecrãs de placar sem cabeçalho nem rodapé

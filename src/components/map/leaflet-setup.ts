@@ -1,9 +1,12 @@
 import type * as Leaflet from "leaflet";
 
-// Mapas do OpenStreetMap: gratuitos e sem chave, mas com uma política de uso justo.
-// Com muito tráfego, trocar por um fornecedor de mosaicos com contrato.
-export const TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-export const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+// Mosaicos do mapa. Por omissão, os do OpenStreetMap: gratuitos e sem chave, mas a política de
+// uso proíbe tráfego intenso. Em produção definir NEXT_PUBLIC_MAP_TILE_URL (e a atribuição)
+// com um fornecedor contratado, por exemplo MapTiler ou Stadia Maps.
+export const TILE_URL = process.env.NEXT_PUBLIC_MAP_TILE_URL || "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+export const TILE_ATTRIBUTION =
+  process.env.NEXT_PUBLIC_MAP_ATTRIBUTION ||
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
 /** O Leaflet mexe em `window` ao ser importado, por isso só é carregado no navegador. */
 export async function loadLeaflet(): Promise<typeof Leaflet> {

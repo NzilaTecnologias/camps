@@ -37,7 +37,7 @@ export async function requestRefund(
 ) {
   const payment = await prisma.payment.findFirst({
     where: { id: paymentId, registration: { event: memberOf(userId) } },
-    include: { refund: true },
+    include: { refund: true, registration: { select: { eventId: true } } },
   });
   if (!payment) throw new UserError("Pagamento não encontrado");
   if (payment.status !== "SUCCEEDED") throw new UserError("Só se reembolsam pagamentos concluídos");
@@ -65,7 +65,7 @@ export async function requestRefund(
 
   if (input.manual) {
     await settleRefund(refund.id, { status: "SUCCEEDED" });
-    return;
+    return payment.registration.eventId;
   }
 
   try {
@@ -76,6 +76,7 @@ export async function requestRefund(
     });
     await prisma.refund.update({ where: { id: refund.id }, data: { providerRef: started.refundRef } });
     await settleRefund(refund.id, started.outcome);
+    return payment.registration.eventId;
   } catch (error) {
     console.error(`Reembolso ${refund.id} do pagamento ${payment.id} falhou`, error);
     await settleRefund(refund.id, { status: "FAILED", reason: "O provedor não aceitou o pedido de devolução" });
@@ -112,7 +113,7 @@ export async function cancelRegistration(userId: string, registrationId: string)
     include: { payments: true },
   });
   if (!registration) throw new UserError("Inscrição não encontrada");
-  if (registration.status === "CANCELLED") return;
+  if (registration.status === "CANCELLED") return registration.eventId;
   if (registration.payments.some((payment) => payment.status === "SUCCEEDED")) {
     throw new UserError("Esta inscrição foi paga: cancele-a reembolsando o pagamento");
   }
@@ -126,4 +127,5 @@ export async function cancelRegistration(userId: string, registrationId: string)
     }),
     prisma.registration.update({ where: { id: registration.id }, data: { status: "CANCELLED" } }),
   ]);
+  return registration.eventId;
 }

@@ -4,6 +4,7 @@ import { UTC_OFFSET } from "@/lib/format";
 import { normalizeAngolanMobile } from "@/lib/phone";
 import { computePrice } from "@/lib/pricing";
 import { findUsableCoupon } from "./coupons";
+import { kv } from "./kv";
 import { appUrl, availableProviders, getProvider, providerFor } from "./payments";
 import type { Outcome } from "./payments/types";
 
@@ -241,16 +242,30 @@ async function settle(paymentId: string, outcome: Outcome) {
   });
 }
 
-/** Pergunta ao provedor como está um pagamento pendente e acerta o nosso lado. */
-export async function refreshPayment(paymentId: string) {
+/**
+ * Pergunta ao provedor como está um pagamento pendente e acerta o nosso lado.
+ * A página da inscrição, o callback e a tarefa de fundo podem pedir o mesmo pagamento ao mesmo
+ * tempo: no máximo uma consulta ao provedor a cada 3 s por pagamento (a tarefa de fundo força).
+ */
+export async function refreshPayment(paymentId: string, options: { force?: boolean } = {}) {
   const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
   if (!payment || payment.status !== "PENDING" || !payment.providerRef) return;
+  const checks = await (await kv()).incr(`paycheck:${payment.id}`, 3_000);
+  if (checks > 1 && !options.force) return;
   try {
     await settle(payment.id, await providerFor(payment.provider).check(payment.providerRef));
   } catch (error) {
     // Fica pendente: a próxima consulta tenta outra vez.
     console.error(`Não foi possível consultar o pagamento ${payment.id}`, error);
   }
+}
+
+/** Dá como falhado um pagamento que continua pendente muito depois de o provedor o poder aceitar. */
+export async function expireStalePayment(paymentId: string): Promise<boolean> {
+  const payment = await prisma.payment.findUnique({ where: { id: paymentId }, select: { status: true } });
+  if (payment?.status !== "PENDING") return false;
+  await settle(paymentId, { status: "FAILED", reason: "O pagamento expirou sem confirmação" });
+  return true;
 }
 
 /** Callback do provedor: só diz qual transação mudou; o estado é confirmado junto do provedor. */
@@ -274,12 +289,14 @@ export async function simulatePayment(userId: string, paymentId: string, approve
   if (!getProvider("SIMULATOR")) throw new UserError("O simulador de pagamentos está desligado");
   const payment = await prisma.payment.findFirst({
     where: { id: paymentId, provider: "SIMULATOR", registration: { registeredById: userId } },
+    include: { registration: { select: { eventId: true } } },
   });
   if (!payment) throw new UserError("Pagamento não encontrado");
   await settle(
     payment.id,
     approve ? { status: "SUCCEEDED" } : { status: "FAILED", reason: "Recusado no simulador" },
   );
+  return payment.registration.eventId;
 }
 
 const registrationSummary = {

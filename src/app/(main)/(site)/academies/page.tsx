@@ -1,15 +1,17 @@
 import { Suspense } from "react";
 import { CommunityCard, CommunityGrid } from "@/components/community-card";
+import { Pager, readPage } from "@/components/pager";
 import { SearchForm } from "@/components/search-form";
 import { Empty, PageTitle } from "@/components/ui";
-import { listAcademies, totalMedals } from "@/server/community";
+import { ACADEMIES_PER_PAGE, listAcademies, totalMedals } from "@/server/community";
 
 type SearchParams = PageProps<"/academies">["searchParams"];
 
 async function AcademyList({ searchParams }: { searchParams: SearchParams }) {
-  const { q } = await searchParams;
-  const search = typeof q === "string" ? q.trim() : "";
-  const academies = await listAcademies(search);
+  const params = await searchParams;
+  const search = typeof params.q === "string" ? params.q.trim() : "";
+  const page = readPage(params.page);
+  const { academies, total } = await listAcademies(search, page);
 
   return (
     <>
@@ -45,6 +47,12 @@ async function AcademyList({ searchParams }: { searchParams: SearchParams }) {
           ))}
         </CommunityGrid>
       )}
+      <Pager
+        basePath="/academies"
+        params={{ q: search }}
+        page={page}
+        totalPages={Math.max(1, Math.ceil(total / ACADEMIES_PER_PAGE))}
+      />
     </>
   );
 }

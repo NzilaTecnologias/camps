@@ -4,6 +4,7 @@ import { UserError } from "@/lib/errors";
 import { clockRemainingMs, DURATIONS, METHODS, type ScoreboardState } from "@/lib/scoreboard";
 import { parseStreamUrl } from "@/lib/stream";
 import { reportResult } from "./brackets";
+import { cachedJson, kv } from "./kv";
 import { memberOf } from "./manage";
 
 const corner = {
@@ -78,6 +79,22 @@ export async function getMatState(matId: string): Promise<MatState | null> {
   };
 }
 
+// Os ecrãs de TV, as sobreposições e os espectadores perguntam pelo placar de segundo a segundo.
+// O estado de cada área fica em cache partilhada durante 1 s: com 50 000 espectadores, a base de
+// dados continua a ver uma consulta por segundo por área. Cada alteração apaga a entrada logo.
+const MAT_CACHE_MS = 1_000;
+const matKey = (matId: string) => `mat:${matId}`;
+
+export function getMatStateCached(matId: string) {
+  // Se a base de dados falhar por momentos, os ecrãs continuam com o último estado (até 5 min).
+  return cachedJson(matKey(matId), MAT_CACHE_MS, () => getMatState(matId), { staleOnErrorMs: 5 * 60_000 });
+}
+
+async function forgetMats(...matIds: (string | null | undefined)[]) {
+  const store = await kv();
+  await Promise.all(matIds.filter((id): id is string => Boolean(id)).map((id) => store.del(matKey(id))));
+}
+
 async function requireOpenMatch(userId: string, matchId: string) {
   const match = await prisma.match.findFirst({
     where: { id: matchId, bracket: { division: { event: memberOf(userId) } } },
@@ -98,6 +115,7 @@ export async function openScoreboard(userId: string, matchId: string, matId: str
   if (matId && !mat) throw new UserError("Área de luta não encontrada");
 
   const untouched = match.clockRemainingMs === null;
+  const previous = await prisma.mat.findMany({ where: { currentMatchId: match.id }, select: { id: true } });
   await prisma.$transaction(async (tx) => {
     // Uma luta só pode estar no placar de uma área de cada vez.
     await tx.mat.updateMany({ where: { currentMatchId: match.id }, data: { currentMatchId: null } });
@@ -110,6 +128,8 @@ export async function openScoreboard(userId: string, matchId: string, matId: str
       },
     });
   });
+  await forgetMats(mat?.id, ...previous.map((p) => p.id));
+  return match.bracket.division.eventId;
 }
 
 const SCORE_FIELDS = {
@@ -128,6 +148,8 @@ export async function adjustScore(userId: string, matchId: string, side: string,
 
   const column = SCORE_FIELDS[side][field];
   await prisma.match.update({ where: { id: match.id }, data: { [column]: Math.max(0, match[column] + delta) } });
+  await forgetMats(match.matId);
+  return match.bracket.division.eventId;
 }
 
 export async function controlClock(userId: string, matchId: string, action: string) {
@@ -150,6 +172,8 @@ export async function controlClock(userId: string, matchId: string, action: stri
           : null;
   if (!data) throw new UserError("Ação de cronómetro inválida");
   await prisma.match.update({ where: { id: match.id }, data });
+  await forgetMats(match.matId);
+  return match.bracket.division.eventId;
 }
 
 /** Termina a luta no placar: grava o resultado, avança a chave e liberta a área. */
@@ -164,6 +188,8 @@ export async function finishMatch(userId: string, matchId: string, winner: strin
   await controlClock(userId, matchId, "pause");
   await reportResult(match.id, winnerId, { method, redScore: match.redScore, blueScore: match.blueScore });
   await prisma.mat.updateMany({ where: { currentMatchId: match.id }, data: { currentMatchId: null } });
+  await forgetMats(match.matId);
+  return match.bracket.division.eventId;
 }
 
 async function requireMat(userId: string, matId: string) {
@@ -188,18 +214,23 @@ export async function setMatStream(userId: string, matId: string, streamUrl: str
   const mat = await requireMat(userId, matId);
   if (!streamUrl) {
     await prisma.mat.update({ where: { id: mat.id }, data: { streamUrl: null, isLive: false } });
-    return;
+    await forgetMats(mat.id);
+    return mat.eventId;
   }
   if (!parseStreamUrl(streamUrl)) {
     throw new UserError("Cole o endereço de um vídeo ou direto do YouTube ou do Facebook (começado por https://)");
   }
   await prisma.mat.update({ where: { id: mat.id }, data: { streamUrl } });
+  await forgetMats(mat.id);
+  return mat.eventId;
 }
 
 export async function setMatLive(userId: string, matId: string, isLive: boolean) {
   const mat = await requireMat(userId, matId);
   if (isLive && !mat.streamUrl) throw new UserError("Guarde primeiro o endereço da transmissão");
   await prisma.mat.update({ where: { id: mat.id }, data: { isLive } });
+  await forgetMats(mat.id);
+  return mat.eventId;
 }
 
 /** Tudo o que a página de controlo do placar precisa, só para quem organiza o evento. */

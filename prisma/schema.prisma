@@ -1,10 +1,13 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  // Índices trigram para as pesquisas "contém" não percorrerem as tabelas inteiras.
+  extensions = [pg_trgm]
 }
 
 enum Gender {
@@ -93,6 +96,7 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
 }
 
 model AthleteProfile {
@@ -113,6 +117,8 @@ model AthleteProfile {
 
   @@index([userId])
   @@index([academyId])
+  @@index([firstName(ops: raw("gin_trgm_ops"))], type: Gin, map: "AthleteProfile_firstName_trgm_idx")
+  @@index([lastName(ops: raw("gin_trgm_ops"))], type: Gin, map: "AthleteProfile_lastName_trgm_idx")
 }
 
 model Academy {
@@ -121,8 +127,20 @@ model Academy {
   country       String  @db.Char(2)
   affiliationId String?
 
+  /// Estatísticas públicas pré-calculadas pela tarefa de fundo (server/jobs.ts), para o
+  /// ranking não ter de contar medalhas de todas as inscrições a cada visita.
+  athleteCount Int  @default(0)
+  gold         Int  @default(0)
+  silver       Int  @default(0)
+  bronze       Int  @default(0)
+  /// Posição no ranking geral; nulo = sem atletas em eventos publicados.
+  rank         Int?
+
   affiliation Affiliation?     @relation(fields: [affiliationId], references: [id])
   athletes    AthleteProfile[]
+
+  @@index([rank])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Academy_name_trgm_idx")
 }
 
 model Affiliation {
@@ -176,6 +194,8 @@ model Event {
   /// Desconto automático para quem se inscreve cedo: percentagem e último instante em que vale.
   earlyDiscountPercent Int?
   earlyDiscountEndsAt  DateTime?
+  /// Inscrições pagas, pré-calculadas pela tarefa de fundo para ordenar por popularidade.
+  paidRegistrations    Int         @default(0)
   createdAt            DateTime    @default(now())
 
   organizer     Organizer      @relation(fields: [organizerId], references: [id])
@@ -185,6 +205,9 @@ model Event {
   mats          Mat[]
 
   @@index([status, startsAt])
+  @@index([status, paidRegistrations])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Event_name_trgm_idx")
+  @@index([city(ops: raw("gin_trgm_ops"))], type: Gin, map: "Event_city_trgm_idx")
 }
 
 /// Categoria de competição: uma combinação de sexo, idade, faixa e peso.
@@ -258,6 +281,8 @@ model Registration {
 
   @@unique([divisionId, athleteId])
   @@index([eventId, status])
+  @@index([athleteId])
+  @@index([couponId])
 }
 
 model Payment {
@@ -281,6 +306,7 @@ model Payment {
 
   @@unique([provider, providerRef])
   @@index([registrationId])
+  @@index([status, createdAt])
 }
 
 /// Devolução total de um pagamento, pedida pelo organizador.
@@ -300,6 +326,8 @@ model Refund {
 
   payment     Payment @relation(fields: [paymentId], references: [id])
   requestedBy User    @relation(fields: [requestedById], references: [id])
+
+  @@index([status])
 }
 
 model WeighIn {
@@ -388,6 +416,9 @@ model Match {
 
   @@unique([bracketId, key])
   @@index([matId, sequence])
+  @@index([redId])
+  @@index([blueId])
+  @@index([winnerId])
 }
 
 model Placement {

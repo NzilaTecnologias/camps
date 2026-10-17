@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { runAction, text, type ActionState } from "@/lib/action-state";
 import { requireUser } from "@/server/auth";
+import { publicDataChanged } from "@/server/cache-tags";
 import {
   addAthlete,
   createDivision,
@@ -11,7 +12,6 @@ import {
   createOrganizer,
   generateBracket,
   reportMatchResult,
-  setEventLocation,
   setEventStatus,
 } from "@/server/manage";
 
@@ -46,6 +46,7 @@ export async function setEventStatusAction(eventId: string, status: "DRAFT" | "P
   return runAction(async () => {
     const user = await requireUser();
     await setEventStatus(user.id, eventId, status);
+    publicDataChanged({ eventId, events: true, community: true, live: true });
     refresh();
   });
 }
@@ -61,6 +62,7 @@ export async function createDivisionAction(eventId: string, _state: ActionState,
       maxWeightKg: text(formData, "maxWeightKg"),
       price: text(formData, "price"),
     });
+    publicDataChanged({ eventId });
     refresh();
   });
 }
@@ -68,12 +70,13 @@ export async function createDivisionAction(eventId: string, _state: ActionState,
 export async function addAthleteAction(divisionId: string, _state: ActionState, formData: FormData) {
   return runAction(async () => {
     const user = await requireUser();
-    await addAthlete(user.id, divisionId, {
+    const eventId = await addAthlete(user.id, divisionId, {
       firstName: text(formData, "firstName"),
       lastName: text(formData, "lastName"),
       birthDate: text(formData, "birthDate"),
       academyName: text(formData, "academyName"),
     });
+    publicDataChanged({ eventId, community: true });
     refresh();
   });
 }
@@ -81,7 +84,7 @@ export async function addAthleteAction(divisionId: string, _state: ActionState, 
 export async function generateBracketAction(divisionId: string, _state: ActionState, formData: FormData) {
   return runAction(async () => {
     const user = await requireUser();
-    await generateBracket(user.id, divisionId, text(formData, "type"));
+    publicDataChanged({ eventId: await generateBracket(user.id, divisionId, text(formData, "type")) });
     refresh();
   });
 }
@@ -89,15 +92,7 @@ export async function generateBracketAction(divisionId: string, _state: ActionSt
 export async function reportResultAction(matchId: string, _state: ActionState, formData: FormData) {
   return runAction(async () => {
     const user = await requireUser();
-    await reportMatchResult(user.id, matchId, text(formData, "winnerId"));
-    refresh();
-  });
-}
-
-export async function setEventLocationAction(eventId: string, _state: ActionState, formData: FormData) {
-  return runAction(async () => {
-    const user = await requireUser();
-    await setEventLocation(user.id, eventId, text(formData, "latitude"), text(formData, "longitude"));
+    publicDataChanged({ eventId: await reportMatchResult(user.id, matchId, text(formData, "winnerId")), community: true });
     refresh();
   });
 }

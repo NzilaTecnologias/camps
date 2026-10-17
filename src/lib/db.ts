@@ -17,6 +17,9 @@ function isDroppedConnection(error: unknown) {
   return /P1017|Connection terminated|closed the connection|ConnectionClosed/.test(text);
 }
 
+/** Consultas feitas por este processo; só em desenvolvimento, para o teste de carga (scripts/load-test.mjs). */
+export const queryCounter = (globalThis as unknown as { campsQueries?: { count: number } }).campsQueries ??= { count: 0 };
+
 function createClient() {
   const client = new PrismaClient({
     adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL, max: poolMax }),
@@ -25,6 +28,7 @@ function createClient() {
   return client.$extends({
     query: {
       async $allOperations({ operation, args, query }) {
+        queryCounter.count++;
         try {
           return await query(args);
         } catch (error) {

@@ -7,8 +7,6 @@ import { parseLatLng } from "@/lib/geo";
 import { SPORT_NAMES } from "@/lib/sports";
 import { createBracket } from "./brackets";
 import { memberOf } from "./manage";
-import { refreshPayment } from "./registrations";
-import { refreshRefund } from "./refunds";
 
 // Consultas e ações das secções do painel de um evento. Tudo passa por memberOf:
 // só quem pertence à organização do evento vê ou mexe.
@@ -174,14 +172,8 @@ export async function listEventRegistrations(userId: string, eventId: string, fi
     ];
   }
 
-  // Põe em dia os pagamentos pendentes antes de mostrar a lista.
-  const pending = await prisma.payment.findMany({
-    where: { status: "PENDING", registration: where },
-    select: { id: true },
-    take: 20,
-  });
-  for (const payment of pending) await refreshPayment(payment.id);
-
+  // Os pagamentos pendentes são confirmados pela tarefa de fundo (server/jobs.ts), não aqui:
+  // a lista não espera por chamadas aos provedores.
   return prisma.registration.findMany({
     where,
     orderBy: { createdAt: "desc" },
@@ -199,9 +191,6 @@ export async function listEventRegistrations(userId: string, eventId: string, fi
 
 export async function listEventPayments(userId: string, eventId: string) {
   const where = { registration: { eventId, event: memberOf(userId) } };
-  const pendingRefunds = await prisma.refund.findMany({ where: { status: "PENDING", payment: where }, select: { id: true } });
-  for (const refund of pendingRefunds) await refreshRefund(refund.id);
-
   return prisma.payment.findMany({
     where: { ...where, status: { in: ["SUCCEEDED", "REFUNDED", "PENDING"] } },
     orderBy: { createdAt: "desc" },

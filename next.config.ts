@@ -15,6 +15,14 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
+  // Caches das páginas públicas (src/server/cache-tags.ts). Expiram em menos de 5 minutos, por isso
+  // nunca entram no pré-render da build: são sempre lidas da base de dados em produção.
+  cacheLife: {
+    // Listas de eventos, academias e atletas.
+    public: { stale: 30, revalidate: 15, expire: 60 },
+    // Página do evento, chaves e transmissões, que mudam durante a prova.
+    live: { stale: 30, revalidate: 5, expire: 30 },
+  },
   poweredByHeader: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

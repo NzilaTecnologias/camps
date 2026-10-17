@@ -3,11 +3,12 @@ import { Suspense } from "react";
 import { AutoSubmitForm } from "@/components/auto-submit-form";
 import { EventCard } from "@/components/event-card";
 import { EventsMap, type MapPoint } from "@/components/map/events-map";
+import { Pager, readPage } from "@/components/pager";
 import { Empty, Icon, LinkButton, buttonClass } from "@/components/ui";
 import { UTC_OFFSET, count, formatDateRange } from "@/lib/format";
 import { eventLocation } from "@/lib/geo";
 import { SPORTS, SPORT_NAMES } from "@/lib/sports";
-import { listEventCities, listEvents, type EventFilters } from "@/server/events";
+import { EVENTS_PER_PAGE, listEventCities, listEventMapPoints, listEvents, type EventFilters } from "@/server/events";
 import { Reveal } from "@/components/reveal";
 
 type SearchParams = PageProps<"/events">["searchParams"];
@@ -69,8 +70,21 @@ function Tabs({ when }: { when: "upcoming" | "past" }) {
 }
 
 async function EventsBrowser({ searchParams }: { searchParams: SearchParams }) {
-  const { raw, filters, active } = readFilters(await searchParams);
-  const [events, cities] = await Promise.all([listEvents(filters, 120), listEventCities()]);
+  const params = await searchParams;
+  const { raw, filters, active } = readFilters(params);
+  const page = readPage(params.page);
+  const [{ events, total }, cities, mapEvents] = await Promise.all([
+    listEvents(filters, { page }),
+    listEventCities(),
+    raw.view === "map" ? listEventMapPoints(filters) : Promise.resolve([]),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / EVENTS_PER_PAGE));
+  // Parâmetros atuais para os links de página (os valores por omissão não aparecem no endereço).
+  const pagerParams = Object.fromEntries(
+    Object.entries(raw).filter(
+      ([key, value]) => value && !(key === "when" && value === "upcoming") && !(key === "sort" && value === "date") && !(key === "view" && value === "grid"),
+    ),
+  );
   const clearHref = raw.when === "past" ? "/events?when=past" : "/events";
   // Ligar e desligar o mapa mantém os filtros escolhidos.
   const mapToggleHref = (() => {
@@ -81,7 +95,7 @@ async function EventsBrowser({ searchParams }: { searchParams: SearchParams }) {
     ).toString();
     return query ? `/events?${query}` : "/events";
   })();
-  const points: MapPoint[] = events.flatMap((event) => {
+  const points: MapPoint[] = mapEvents.flatMap((event) => {
     const location = eventLocation(event);
     return location
       ? [
@@ -188,7 +202,7 @@ async function EventsBrowser({ searchParams }: { searchParams: SearchParams }) {
           {raw.when === "past" ? "Eventos passados" : "Próximos eventos"}
         </h2>
         <p className="flex items-center gap-3 text-sm text-muted">
-          {count(events.length, "evento", "eventos")}
+          {count(total, "evento", "eventos")}
           {active && (
             <Link href={clearHref} className="font-semibold text-primary hover:underline">
               Limpar filtros
@@ -200,11 +214,14 @@ async function EventsBrowser({ searchParams }: { searchParams: SearchParams }) {
       {raw.view === "map" && (
         <section className="mb-8" aria-label="Mapa dos eventos">
           <EventsMap points={points} />
-          {points.length < events.length && (
+          {points.length < mapEvents.length && (
             <p className="mt-2 text-xs text-muted">
-              {count(events.length - points.length, "evento não aparece", "eventos não aparecem")} no mapa por não ter
+              {count(mapEvents.length - points.length, "evento não aparece", "eventos não aparecem")} no mapa por não ter
               localização.
             </p>
+          )}
+          {mapEvents.length >= 500 && (
+            <p className="mt-2 text-xs text-muted">O mapa mostra os primeiros 500 eventos; use os filtros para ver outros.</p>
           )}
         </section>
       )}
@@ -226,6 +243,7 @@ async function EventsBrowser({ searchParams }: { searchParams: SearchParams }) {
           ))}
         </ul>
       )}
+      <Pager basePath="/events" params={pagerParams} page={page} totalPages={totalPages} />
     </>
   );
 }

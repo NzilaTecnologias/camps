@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import { runAction, text, type ActionState } from "@/lib/action-state";
 import { UserError } from "@/lib/errors";
 import { requireUser } from "@/server/auth";
+import { publicDataChanged } from "@/server/cache-tags";
 import { createCoupon, deleteCoupon, setCouponActive, setEarlyDiscount } from "@/server/coupons";
 import {
   cancelEvent,
@@ -33,6 +34,7 @@ export async function updateEventSettingsAction(eventId: string, _state: ActionS
       latitude: text(formData, "latitude"),
       longitude: text(formData, "longitude"),
     });
+    publicDataChanged({ eventId, events: true, live: true });
     refresh();
   });
 }
@@ -42,6 +44,7 @@ export async function cancelEventAction(eventId: string, _state: ActionState, fo
     const user = await requireUser();
     if (text(formData, "confirm") !== "CANCELAR") throw new UserError("Escreva CANCELAR para confirmar");
     await cancelEvent(user.id, eventId);
+    publicDataChanged({ eventId, events: true, community: true, live: true });
     refresh();
   });
 }
@@ -49,7 +52,7 @@ export async function cancelEventAction(eventId: string, _state: ActionState, fo
 export async function cancelRegistrationAction(registrationId: string) {
   return runAction(async () => {
     const user = await requireUser();
-    await cancelRegistration(user.id, registrationId);
+    publicDataChanged({ eventId: await cancelRegistration(user.id, registrationId), community: true });
     refresh();
   });
 }
@@ -57,10 +60,11 @@ export async function cancelRegistrationAction(registrationId: string) {
 export async function refundAction(paymentId: string, _state: ActionState, formData: FormData) {
   return runAction(async () => {
     const user = await requireUser();
-    await requestRefund(user.id, paymentId, {
+    const eventId = await requestRefund(user.id, paymentId, {
       reason: text(formData, "reason"),
       manual: text(formData, "manual") === "1",
     });
+    publicDataChanged({ eventId, community: true });
     refresh();
   });
 }
@@ -115,6 +119,7 @@ export async function setEarlyDiscountAction(eventId: string, _state: ActionStat
   return runAction(async () => {
     const user = await requireUser();
     await setEarlyDiscount(user.id, eventId, text(formData, "percent"), text(formData, "endsOn"));
+    publicDataChanged({ eventId });
     refresh();
   });
 }
@@ -123,6 +128,7 @@ export async function generateMissingBracketsAction(eventId: string, _state: Act
   return runAction(async () => {
     const user = await requireUser();
     const { generated } = await generateMissingBrackets(user.id, eventId, text(formData, "type"));
+    publicDataChanged({ eventId });
     if (generated === 0) throw new UserError("Nenhuma categoria sem chave tem pelo menos dois atletas aptos");
     refresh();
   });

@@ -114,7 +114,7 @@ async function Discounts({ params }: { params: Promise<{ eventId: string }> }) {
                             {coupon.active ? "Desativar" : "Ativar"}
                           </button>
                         </ActionForm>
-                        {uses === 0 && (
+                        {coupon.applied === 0 && (
                           <ActionForm action={deleteCouponAction.bind(null, coupon.id)}>
                             <button type="submit" className={buttonClass("ghost", "sm")}>
                               Apagar

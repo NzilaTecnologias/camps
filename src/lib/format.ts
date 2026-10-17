@@ -4,12 +4,36 @@ export const TIME_ZONE = "Africa/Luanda";
 export const UTC_OFFSET = "+01:00";
 export const DEFAULT_COUNTRY = "AO";
 
+// Criar um Intl.DateTimeFormat / NumberFormat custa ~80 vezes mais do que usá-lo, e uma lista
+// de 24 eventos formata dezenas de datas. Cada combinação de opções é criada uma só vez.
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+const numberFormats = new Map<string, Intl.NumberFormat>();
+
+export function dateFormat(locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const key = `${locale}|${JSON.stringify(options)}`;
+  let format = dateFormats.get(key);
+  if (!format) dateFormats.set(key, (format = new Intl.DateTimeFormat(locale, options)));
+  return format;
+}
+
+function numberFormat(options: Intl.NumberFormatOptions): Intl.NumberFormat {
+  const key = JSON.stringify(options);
+  let format = numberFormats.get(key);
+  if (!format) numberFormats.set(key, (format = new Intl.NumberFormat(LOCALE, options)));
+  return format;
+}
+
 export function formatMoney(cents: number, currency: string) {
-  return new Intl.NumberFormat(LOCALE, { style: "currency", currency }).format(cents / 100);
+  return numberFormat({ style: "currency", currency }).format(cents / 100);
 }
 
 export function formatDate(date: Date) {
-  return new Intl.DateTimeFormat(LOCALE, { dateStyle: "long", timeZone: TIME_ZONE }).format(date);
+  return dateFormat(LOCALE, { dateStyle: "long", timeZone: TIME_ZONE }).format(date);
+}
+
+/** "16/10/26, 14:30" no fuso de Luanda. */
+export function formatDateTime(date: Date) {
+  return dateFormat(LOCALE, { dateStyle: "short", timeStyle: "short", timeZone: TIME_ZONE }).format(date);
 }
 
 export const EVENT_STATUS_LABEL = {
@@ -29,11 +53,16 @@ export const REGISTRATION_STATUS_LABEL = {
   CANCELLED: "Cancelada",
 } as const;
 
+const shortMonth = (date: Date) =>
+  dateFormat(LOCALE, { month: "short", timeZone: TIME_ZONE }).format(date).replace(".", "");
+
 /** Dia e mês separados, para o bloco de data dos cartões de evento. */
 export function dateParts(date: Date) {
-  const part = (options: Intl.DateTimeFormatOptions) =>
-    new Intl.DateTimeFormat(LOCALE, { ...options, timeZone: TIME_ZONE }).format(date);
-  return { day: part({ day: "2-digit" }), month: part({ month: "short" }).replace(".", ""), year: part({ year: "numeric" }) };
+  return {
+    day: dateFormat(LOCALE, { day: "2-digit", timeZone: TIME_ZONE }).format(date),
+    month: shortMonth(date),
+    year: dateFormat(LOCALE, { year: "numeric", timeZone: TIME_ZONE }).format(date),
+  };
 }
 
 export function formatWeight(maxWeightKg: { toString(): string } | null) {
@@ -45,12 +74,12 @@ export function count(n: number, singular: string, plural: string) {
   return `${n} ${n === 1 ? singular : plural}`;
 }
 
+const isoDay = () => dateFormat("en-CA", { timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
+
 /** Ano, mês e dia de uma data no fuso de Luanda. */
 function localDay(date: Date) {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" })
-    .formatToParts(date)
-    .reduce<Record<string, number>>((acc, part) => (part.type === "literal" ? acc : { ...acc, [part.type]: Number(part.value) }), {});
-  return { year: parts.year, month: parts.month, day: parts.day };
+  const [year, month, day] = isoDay().format(date).split("-").map(Number);
+  return { year, month, day };
 }
 
 /** Dias de calendário (em Luanda) entre duas datas: 0 = mesmo dia, 1 = amanhã. */
@@ -64,21 +93,18 @@ export function calendarDaysBetween(from: Date, to: Date): number {
 export function formatDateRange(start: Date, end: Date, now = new Date()): string {
   const s = localDay(start);
   const e = localDay(end);
-  const month = (date: Date) =>
-    new Intl.DateTimeFormat(LOCALE, { month: "short", timeZone: TIME_ZONE }).format(date).replace(".", "");
   const year = e.year !== localDay(now).year ? ` ${e.year}` : "";
-  if (s.year === e.year && s.month === e.month && s.day === e.day) return `${s.day} ${month(start)}${year}`;
-  if (s.year === e.year && s.month === e.month) return `${s.day} – ${e.day} ${month(end)}${year}`;
-  return `${s.day} ${month(start)} – ${e.day} ${month(end)}${year}`;
+  if (s.year === e.year && s.month === e.month && s.day === e.day) return `${s.day} ${shortMonth(start)}${year}`;
+  if (s.year === e.year && s.month === e.month) return `${s.day} – ${e.day} ${shortMonth(end)}${year}`;
+  return `${s.day} ${shortMonth(start)} – ${e.day} ${shortMonth(end)}${year}`;
 }
 
 /** Data no formato dos campos `<input type="date">` (AAAA-MM-DD), no fuso de Luanda. */
 export function toDateInput(date: Date | null): string {
-  if (!date) return "";
-  return new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+  return date ? isoDay().format(date) : "";
 }
 
 /** Peso medido na pesagem: "72,4 kg". */
 export function formatKg(weightKg: { toString(): string }) {
-  return `${new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 2 }).format(Number(weightKg.toString()))} kg`;
+  return `${numberFormat({ maximumFractionDigits: 2 }).format(Number(weightKg.toString()))} kg`;
 }

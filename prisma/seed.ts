@@ -4,6 +4,7 @@ import { hashPassword } from "@/lib/password";
 import { slugify } from "@/lib/slug";
 import { createBracket, reportResult } from "@/server/brackets";
 import { adjustScore, openScoreboard } from "@/server/scoreboard";
+import { refreshCommunityStats } from "@/server/stats";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -203,6 +204,8 @@ async function main() {
   await adjustScore(owner.id, semifinal.id, "red", "points", 2);
   await adjustScore(owner.id, semifinal.id, "blue", "advantages", 1);
 
+  // Ranking das academias e popularidade dos eventos, que em produção a tarefa de fundo mantém.
+  await refreshCommunityStats();
   console.log(`Seed concluído: ${event.name} (/events/${event.slug})`);
 }
 

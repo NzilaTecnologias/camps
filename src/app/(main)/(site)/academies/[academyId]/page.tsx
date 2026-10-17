@@ -18,7 +18,7 @@ async function AcademyDetails({ params }: { params: Promise<{ academyId: string 
         <div>
           <PageTitle>{academy.name}</PageTitle>
           <p className="mt-2 text-sm text-muted">
-            {count(academy.athletes.length, "atleta", "atletas")} em torneios publicados
+            {count(academy.athleteCount, "atleta", "atletas")} em torneios publicados
             {academy.affiliation && ` · ${academy.affiliation}`}
           </p>
         </div>

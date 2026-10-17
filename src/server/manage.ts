@@ -145,17 +145,6 @@ async function requireDivision(userId: string, divisionId: string) {
   return division;
 }
 
-/** Marca (ou apaga, com campos vazios) o ponto do evento no mapa. */
-export async function setEventLocation(userId: string, eventId: string, latitude: string, longitude: string) {
-  const event = await requireEvent(userId, eventId);
-  const location = parseLatLng(latitude, longitude);
-  if (location === "invalid") throw new UserError("Localização no mapa inválida");
-  await prisma.event.update({
-    where: { id: event.id },
-    data: { latitude: location?.lat ?? null, longitude: location?.lng ?? null },
-  });
-}
-
 export async function setEventStatus(userId: string, eventId: string, status: "DRAFT" | "PUBLISHED") {
   const event = await requireEvent(userId, eventId);
   if (event.status === "CANCELLED") throw new UserError("Evento cancelado não pode ser publicado");
@@ -249,19 +238,22 @@ export async function addAthlete(userId: string, divisionId: string, input: Athl
       },
     });
   });
+  return division.eventId;
 }
 
 export async function generateBracket(userId: string, divisionId: string, type: string) {
   const division = await requireDivision(userId, divisionId);
   if (type !== "SINGLE_ELIMINATION" && type !== "ROUND_ROBIN") throw new UserError("Tipo de chave inválido");
   await createBracket(division.id, type satisfies BracketKind);
+  return division.eventId;
 }
 
 export async function reportMatchResult(userId: string, matchId: string, winnerId: string) {
   const match = await prisma.match.findFirst({
     where: { id: matchId, bracket: { division: { event: memberOf(userId) } } },
-    select: { id: true },
+    select: { id: true, bracket: { select: { division: { select: { eventId: true } } } } },
   });
   if (!match) throw new UserError("Luta não encontrada");
   await reportResult(match.id, winnerId);
+  return match.bracket.division.eventId;
 }

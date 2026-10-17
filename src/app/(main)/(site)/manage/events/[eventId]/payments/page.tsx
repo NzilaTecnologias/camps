@@ -3,15 +3,12 @@ import { ActionForm } from "@/components/action-form";
 import { Field } from "@/components/field";
 import { DataTable, Notice, SectionHeader, StatTile } from "@/components/manage/parts";
 import { Badge, Empty } from "@/components/ui";
-import { formatMoney, LOCALE, TIME_ZONE } from "@/lib/format";
+import { formatDateTime, formatMoney } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { getEventWorkspace, listEventPayments } from "@/server/organizer";
 import { refundAction } from "../../../event-actions";
 
 const PROVIDER_LABEL = { MULTICAIXA_EXPRESS: "Multicaixa Express", PAYPAL: "PayPal", SIMULATOR: "Simulador" } as const;
-
-const formatDateTime = (date: Date) =>
-  new Intl.DateTimeFormat(LOCALE, { dateStyle: "short", timeStyle: "short", timeZone: TIME_ZONE }).format(date);
 
 type Payment = Awaited<ReturnType<typeof listEventPayments>>[number];
 
