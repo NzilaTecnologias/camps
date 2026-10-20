@@ -4,6 +4,7 @@ import { DEFAULT_COUNTRY, UTC_OFFSET } from "@/lib/format";
 import { slugify } from "@/lib/slug";
 import { SPORT_NAMES } from "@/lib/sports";
 import { parseLatLng } from "@/lib/geo";
+import { platformFeePerAthleteCents } from "./billing-config";
 import { createBracket, reportResult, type BracketKind } from "./brackets";
 import { divisionDetails } from "./events";
 
@@ -85,6 +86,8 @@ export async function createEvent(userId: string, input: EventInput) {
   return prisma.event.create({
     data: {
       organizerId: input.organizerId,
+      // A taxa em vigor fica gravada no evento: mudar o preço não mexe em eventos já criados.
+      platformFeeCents: platformFeePerAthleteCents(),
       slug,
       name: input.name,
       description: input.description || null,
@@ -234,6 +237,7 @@ export async function addAthlete(userId: string, divisionId: string, input: Athl
         athleteId: athlete.id,
         registeredById: userId,
         status: "PAID",
+        confirmedAt: new Date(),
         priceCents: 0,
       },
     });

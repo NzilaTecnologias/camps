@@ -9,6 +9,7 @@ import { eventLocation } from "@/lib/geo";
 import { parseStreamUrl } from "@/lib/stream";
 import { formatDate, formatMoney, formatWeight, count } from "@/lib/format";
 import { earlyDiscountActive } from "@/lib/pricing";
+import { planActive, premiumActive } from "@/lib/federation-rules";
 import { getPublishedEvent } from "@/server/events";
 import { registrationClosedReason } from "@/server/registrations";
 import { Reveal } from "@/components/reveal";
@@ -44,6 +45,16 @@ async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
               </Badge>
             )}
             <span className="text-sm text-white/60">Organização: {event.organizer.name}</span>
+            {event.federation && planActive(event.federation) && (
+              <Link href={`/f/${event.federation.slug}`} className="text-sm font-semibold text-white/80 underline-offset-2 hover:underline">
+                {event.federation.name}
+              </Link>
+            )}
+            {event.requiresMembership && event.federation && premiumActive(event.federation) && (
+              <Link href={`/f/${event.federation.slug}/filiacao`}>
+                <Badge tone="inverse">Exige filiação na {event.federation.name}</Badge>
+              </Link>
+            )}
           </div>
           <h1 className="mt-4 font-display text-5xl font-bold uppercase leading-[0.95] tracking-tight sm:text-6xl">
             {event.name}

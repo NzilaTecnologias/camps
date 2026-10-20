@@ -1,3 +1,4 @@
+import { refreshMembershipByProviderRef, refreshMembershipRefundByProviderRef } from "@/server/memberships";
 import { refreshRefundByProviderRef } from "@/server/refunds";
 import { refreshByProviderRef } from "@/server/registrations";
 
@@ -9,7 +10,12 @@ export async function POST(request: Request) {
   const id = body && typeof body === "object" && "id" in body ? body.id : null;
   if (typeof id === "string" || typeof id === "number") {
     const payment = await refreshByProviderRef("MULTICAIXA_EXPRESS", String(id));
-    if (!payment) await refreshRefundByProviderRef("MULTICAIXA_EXPRESS", String(id));
+    // Pode ser também uma quota de filiação ou uma devolução.
+    if (!payment && !(await refreshMembershipByProviderRef("MULTICAIXA_EXPRESS", String(id)))) {
+      if (!(await refreshMembershipRefundByProviderRef("MULTICAIXA_EXPRESS", String(id)))) {
+        await refreshRefundByProviderRef("MULTICAIXA_EXPRESS", String(id));
+      }
+    }
   }
   return new Response(null, { status: 204 });
 }

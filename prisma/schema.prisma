@@ -47,6 +47,17 @@ enum PaymentProvider {
   SIMULATOR
 }
 
+enum FederationPlan {
+  BASIC
+  PREMIUM
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  CANCELLED
+}
+
 enum RefundStatus {
   PENDING
   SUCCEEDED
@@ -83,6 +94,8 @@ model User {
   registrations Registration[]    @relation("RegisteredBy")
   sessions      Session[]
   refunds       Refund[]
+  federations   FederationMember[]
+  membershipRefunds MembershipRefund[]
 }
 
 model Session {
@@ -114,6 +127,7 @@ model AthleteProfile {
   user          User           @relation(fields: [userId], references: [id])
   academy       Academy?       @relation(fields: [academyId], references: [id])
   registrations Registration[]
+  memberships   Membership[]
 
   @@index([userId])
   @@index([academyId])
@@ -138,6 +152,7 @@ model Academy {
 
   affiliation Affiliation?     @relation(fields: [affiliationId], references: [id])
   athletes    AthleteProfile[]
+  federations FederationAcademy[]
 
   @@index([rank])
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Academy_name_trgm_idx")
@@ -154,9 +169,13 @@ model Organizer {
   id   String @id @default(cuid())
   name String
   slug String @unique
+  /// Conta para onde a Camps transfere o saldo das inscrições de cada evento.
+  payoutHolder String?
+  payoutIban   String?
 
-  members OrganizerMember[]
-  events  Event[]
+  members     OrganizerMember[]
+  events      Event[]
+  federations FederationOrganizer[]
 }
 
 model OrganizerMember {
@@ -196,6 +215,8 @@ model Event {
   earlyDiscountEndsAt  DateTime?
   /// Inscrições pagas, pré-calculadas pela tarefa de fundo para ordenar por popularidade.
   paidRegistrations    Int         @default(0)
+  /// Taxa da Camps por atleta confirmado, fixada quando o evento é criado (ver server/billing.ts).
+  platformFeeCents     Int         @default(50000)
   createdAt            DateTime    @default(now())
 
   organizer     Organizer      @relation(fields: [organizerId], references: [id])
@@ -203,9 +224,16 @@ model Event {
   coupons       Coupon[]
   registrations Registration[]
   mats          Mat[]
+  payouts       Payout[]
+  /// Federação sob a qual o evento decorre (conta para o ranking dela e pode exigir filiação).
+  federationId         String?
+  /// Só atletas com filiação individual ativa nessa federação se podem inscrever (plano Premium).
+  requiresMembership   Boolean     @default(false)
+  federation    Federation?    @relation(fields: [federationId], references: [id])
 
   @@index([status, startsAt])
   @@index([status, paidRegistrations])
+  @@index([federationId, startsAt])
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Event_name_trgm_idx")
   @@index([city(ops: raw("gin_trgm_ops"))], type: Gin, map: "Event_city_trgm_idx")
 }
@@ -263,6 +291,9 @@ model Registration {
   priceCents     Int
   /// Quanto foi descontado do preço da categoria (desconto antecipado + cupão).
   discountCents  Int                @default(0)
+  /// Primeira vez que a inscrição ficou confirmada. Conta para a taxa da Camps mesmo que
+  /// o atleta desista ou seja reembolsado depois (como os créditos do Smoothcomp).
+  confirmedAt    DateTime?
   couponId       String?
   seed           Int?
   createdAt      DateTime           @default(now())
@@ -307,6 +338,25 @@ model Payment {
   @@unique([provider, providerRef])
   @@index([registrationId])
   @@index([status, createdAt])
+}
+
+/// Transferência do saldo de um evento para a conta do organizador, registada por um administrador.
+model Payout {
+  id           String   @id @default(cuid())
+  /// Repasse do saldo de um evento (inscrições) ou de uma federação (quotas de filiação).
+  eventId      String?
+  federationId String?
+  amountCents  Int
+  /// Referência da transferência bancária (número de operação).
+  reference   String
+  paidAt      DateTime @default(now())
+  recordedBy  String
+
+  event      Event?      @relation(fields: [eventId], references: [id])
+  federation Federation? @relation(fields: [federationId], references: [id])
+
+  @@index([eventId])
+  @@index([federationId])
 }
 
 /// Devolução total de um pagamento, pedida pelo organizador.
@@ -431,4 +481,165 @@ model Placement {
   registration Registration @relation(fields: [registrationId], references: [id])
 
   @@index([bracketId, place])
+}
+
+/// Federação, liga ou associação com página própria (/f/<slug>), à semelhança das plataformas de
+/// federação do Smoothcomp. Funciona com uma assinatura anual (plano) ativada pela Camps.
+model Federation {
+  id          String          @id @default(cuid())
+  name        String
+  slug        String          @unique
+  sport       String
+  description String?
+  /// Cor da marca (#rrggbb) usada no cabeçalho da página pública.
+  color       String          @default("#d21f2b")
+  plan        FederationPlan?
+  /// Até quando o plano está pago; sem data ou no passado, a federação está inativa.
+  planExpiresAt DateTime?
+  payoutHolder String?
+  payoutIban   String?
+  createdAt   DateTime        @default(now())
+
+  members     FederationMember[]
+  organizers  FederationOrganizer[]
+  academies   FederationAcademy[]
+  plans       MembershipPlan[]
+  memberships Membership[]
+  posts       FederationPost[]
+  events      Event[]
+  payouts     Payout[]
+}
+
+model FederationMember {
+  federationId String
+  userId       String
+  createdAt    DateTime @default(now())
+
+  federation Federation @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id])
+
+  @@id([federationId, userId])
+  @@index([userId])
+}
+
+/// Organização autorizada pela federação a pôr os seus eventos sob ela.
+model FederationOrganizer {
+  federationId String
+  organizerId  String
+  createdAt    DateTime @default(now())
+
+  federation Federation @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  organizer  Organizer  @relation(fields: [organizerId], references: [id])
+
+  @@id([federationId, organizerId])
+  @@index([organizerId])
+}
+
+/// Filiação de uma academia (plano Básico e Premium), gerida pela federação.
+model FederationAcademy {
+  federationId String
+  academyId    String
+  validUntil   DateTime
+  createdAt    DateTime @default(now())
+
+  federation Federation @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  academy    Academy    @relation(fields: [academyId], references: [id])
+
+  @@id([federationId, academyId])
+  @@index([academyId])
+}
+
+/// Plano de filiação individual (plano Premium): preço e duração definidos pela federação.
+model MembershipPlan {
+  id           String   @id @default(cuid())
+  federationId String
+  name         String
+  priceCents   Int
+  months       Int      @default(12)
+  /// Idade máxima no ano da filiação (ex.: plano juvenil até 17); nulo = qualquer idade.
+  maxAge       Int?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  federation  Federation   @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+
+  @@index([federationId])
+}
+
+/// Filiação individual de um atleta numa federação.
+model Membership {
+  id           String           @id @default(cuid())
+  federationId String
+  planId       String
+  athleteId    String
+  boughtById   String
+  status       MembershipStatus @default(PENDING)
+  priceCents   Int
+  validFrom    DateTime?
+  validUntil   DateTime?
+  createdAt    DateTime         @default(now())
+
+  federation Federation          @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  plan       MembershipPlan      @relation(fields: [planId], references: [id])
+  athlete    AthleteProfile      @relation(fields: [athleteId], references: [id])
+  payments   MembershipPayment[]
+
+  @@index([federationId, status])
+  @@index([athleteId, federationId])
+}
+
+/// Pagamento de uma quota de filiação: mesmos provedores e regras dos pagamentos de inscrições.
+model MembershipPayment {
+  id                String          @id @default(cuid())
+  membershipId      String
+  provider          PaymentProvider
+  providerRef       String?
+  amountCents       Int
+  chargeCurrency    String          @db.Char(3)
+  chargeAmountCents Int
+  status            PaymentStatus   @default(PENDING)
+  failureReason     String?
+  createdAt         DateTime        @default(now())
+  settledAt         DateTime?
+
+  membership Membership        @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  refund     MembershipRefund?
+
+  @@unique([provider, providerRef])
+  @@index([membershipId])
+  @@index([status, createdAt])
+}
+
+/** Devolução total de uma quota de filiação, pedida pela federação. Mesmas regras de Refund. */
+model MembershipRefund {
+  id            String       @id @default(cuid())
+  paymentId     String       @unique
+  status        RefundStatus @default(PENDING)
+  /// Devolvido fora da plataforma (numerário, transferência): fica só registado.
+  manual        Boolean      @default(false)
+  providerRef   String?
+  reason        String
+  failureReason String?
+  requestedById String
+  createdAt     DateTime     @default(now())
+  settledAt     DateTime?
+
+  payment     MembershipPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  requestedBy User              @relation(fields: [requestedById], references: [id])
+
+  @@index([status])
+}
+
+/// Notícia na página da federação (plano Premium).
+model FederationPost {
+  id           String   @id @default(cuid())
+  federationId String
+  title        String
+  body         String
+  publishedAt  DateTime @default(now())
+
+  federation Federation @relation(fields: [federationId], references: [id], onDelete: Cascade)
+
+  @@index([federationId, publishedAt])
 }

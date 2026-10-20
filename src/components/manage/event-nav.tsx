@@ -6,9 +6,10 @@ import { useEffect, useRef } from "react";
 import { Icon, type IconName } from "../ui";
 
 type Item = { segment: string; label: string; icon: IconName };
+export type NavSection = { title: string; items: Item[] };
 
 /** Secções do painel de um evento, pela ordem em que o organizador as usa. */
-export const EVENT_SECTIONS: { title: string; items: Item[] }[] = [
+export const EVENT_SECTIONS: NavSection[] = [
   {
     title: "Evento",
     items: [
@@ -23,6 +24,7 @@ export const EVENT_SECTIONS: { title: string; items: Item[] }[] = [
       { segment: "registrations", label: "Inscrições", icon: "users" },
       { segment: "discounts", label: "Descontos e cupões", icon: "ticket" },
       { segment: "payments", label: "Pagamentos e reembolsos", icon: "wallet" },
+      { segment: "billing", label: "Faturação e repasses", icon: "flag" },
     ],
   },
   {
@@ -36,13 +38,16 @@ export const EVENT_SECTIONS: { title: string; items: Item[] }[] = [
   },
 ];
 
-/**
- * Menu do painel do evento: coluna fixa ao lado no ecrã largo, faixa deslizante no telemóvel.
- * Assinala a secção aberta (as páginas de uma categoria contam como "Categorias").
- */
 export function EventNav({ eventId }: { eventId: string }) {
+  return <SectionNav base={`/manage/events/${eventId}`} sections={EVENT_SECTIONS} label="Secções do evento" />;
+}
+
+/**
+ * Menu de um painel (evento, federação): coluna fixa ao lado no ecrã largo, faixa deslizante no
+ * telemóvel. Assinala a secção aberta (as subpáginas contam como a secção de onde vêm).
+ */
+export function SectionNav({ base, sections, label }: { base: string; sections: NavSection[]; label: string }) {
   const pathname = usePathname();
-  const base = `/manage/events/${eventId}`;
   const current = pathname.slice(base.length).split("/")[1] ?? "";
   const list = useRef<HTMLUListElement>(null);
 
@@ -55,9 +60,9 @@ export function EventNav({ eventId }: { eventId: string }) {
   }, [current]);
 
   return (
-    <nav aria-label="Secções do evento" className="lg:sticky lg:top-20">
+    <nav aria-label={label} className="lg:sticky lg:top-20">
       <ul ref={list} className="relative -mx-4 flex gap-1 overflow-x-auto px-4 pb-2 lg:mx-0 lg:flex-col lg:gap-0 lg:overflow-visible lg:px-0 lg:pb-0">
-        {EVENT_SECTIONS.map((group) => (
+        {sections.map((group) => (
           <li key={group.title} className="contents lg:block lg:pb-5">
             <p className="hidden px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted lg:block">
               {group.title}

@@ -101,7 +101,7 @@ async function main() {
   );
 
   // Cada atleta inscrito em 2 ou 3 categorias diferentes; ~10% ficam por pagar.
-  const registrations: { id: string; eventId: string; divisionId: string; athleteId: string; registeredById: string; status: "PAID" | "INCOMPLETE"; priceCents: number }[] = [];
+  const registrations: { id: string; eventId: string; divisionId: string; athleteId: string; registeredById: string; status: "PAID" | "INCOMPLETE"; confirmedAt: Date | null; priceCents: number }[] = [];
   const totalDivisions = EVENTS * DIVISIONS_PER_EVENT;
   for (let a = 0; a < athleteCount; a++) {
     const count = a % 2 ? 3 : 2;
@@ -114,6 +114,7 @@ async function main() {
         athleteId: id("lath", a),
         registeredById: id("luser", Math.floor(a / ATHLETES_PER_USER)),
         status: registrations.length % 10 === 0 ? "INCOMPLETE" : "PAID",
+        confirmedAt: registrations.length % 10 === 0 ? null : new Date(now - DAY),
         priceCents: 1_000_000,
       });
     }

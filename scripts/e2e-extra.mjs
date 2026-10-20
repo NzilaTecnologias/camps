@@ -120,6 +120,36 @@ await carol.submit(regPath, "Simular aprovado");
 r = await carol.get(regPath);
 check("inscrição paga de 1000 Kz", /1\s000,00\sKz pagos/.test(strip(r.html)), strip(r.html).slice(0, 300));
 
+// Faturação: taxa por atleta, conta para repasses e transferência registada pelo administrador
+const B = `${E}/billing`;
+r = await alice.get(B);
+check("extrato: 1 atleta, taxa de 500 Kz e saldo de 500 Kz", /Atletas confirmados 1\b/.test(strip(r.html)) && /Saldo a transferir 500,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 600));
+r = await alice.submit(B, 'name="iban"', { holder: "Liga X Lda", iban: "AO16004000001234567810174" });
+check("IBAN com dígitos de controlo errados é recusado", r.html.includes("IBAN inválido"));
+await alice.submit(B, 'name="iban"', { holder: "Liga X Lda", iban: "ao15 0040 0000 1234 5678 1017 4" });
+r = await alice.get(B);
+check("IBAN válido fica guardado e formatado", strip(r.html).includes("AO15 0040 0000 1234 5678 1017 4"));
+r = await bob.replay(alice, B, 'name="iban"', { holder: "Bob", iban: "AO15004000001234567810174" });
+check("outro utilizador não muda a conta da organização", r.html.includes("Organização não encontrada"));
+r = await alice.get("/admin/payouts");
+check("organizador sem permissão não vê os repasses", r.status === 404 || !strip(r.html).includes("Repasses aos organizadores"));
+const admin = new Browser();
+await admin.submit("/login", "password", { email: "admin@camps.local", password: "camps-admin" });
+r = await admin.get("/admin/payouts");
+check("administrador vê o evento na fila de repasses", strip(r.html).includes(`Torneio X ${stamp}`) && /Liga X Lda/.test(strip(r.html)), strip(r.html).slice(0, 300));
+// Formulário de repasse da linha deste evento (o primeiro que aparece depois do nome dele na fila).
+const payoutForm = (html) =>
+  (html.match(/<form[\s\S]*?<\/form>/g) ?? [])
+    .filter((form) => form.includes('name="reference"'))
+    .findIndex((form) => html.indexOf(form) > html.indexOf(`Torneio X ${stamp}`));
+r = await admin.get("/admin/payouts");
+r = await admin.submit("/admin/payouts", 'name="reference"', { amount: "600", reference: "TRF-001" }, payoutForm(r.html));
+check("repasse acima do saldo é recusado", r.html.includes("passa do saldo"));
+r = await admin.get("/admin/payouts");
+await admin.submit("/admin/payouts", 'name="reference"', { amount: "300", reference: "TRF-001" }, payoutForm(r.html));
+r = await alice.get(B);
+check("organizador vê a transferência e o saldo que falta", /TRF-001/.test(strip(r.html)) && /Saldo a transferir 200,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 600));
+
 // Pesagem: gravar e apagar
 const W = `${E}/weigh-in`;
 await alice.submit(W, 'name="weight"', { weight: "70" });
@@ -150,6 +180,8 @@ r = await alice.get(P);
 check("reembolso manual registado", /Reembolsado/.test(strip(r.html)) && /Devolvido fora da plataforma/.test(strip(r.html)), strip(r.html).slice(0, 400));
 r = await carol.get(regPath);
 check("atleta vê o reembolso", /cancelada e reembolsada/.test(strip(r.html)));
+r = await alice.get(B);
+check("depois do reembolso a taxa mantém-se e o organizador fica a dever", /Em dívida à Camps 800,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 600));
 
 // Cronómetro: reiniciar
 await alice.submit(`${E}/scoreboard`, 'placeholder="Área 1"', { name: "Área 1" });
@@ -207,6 +239,111 @@ r = await anon.get(`/events?q=${encodeURIComponent(`Torneio X ${stamp}`)}`);
 check("evento cancelado sai da lista pública", !strip(r.html).includes(`Torneio X ${stamp}`));
 r = await carol.get(reg);
 check("evento cancelado já não aceita inscrições", !r.html.includes('name="athleteId"'), strip(r.html).slice(0, 200));
+
+// Plano Federação: criação, ativação pela Camps, organizações, academias, filiação paga e eventos que a exigem
+r = await alice.submit("/manage", "Criar federação", { name: `Fed X ${stamp}`, sport: "Judo" });
+const F = r.location ? new URL(r.location, BASE).pathname : "";
+check("federação criada abre o painel dela", /^\/manage\/federations\/\w+$/.test(F), `${r.status} ${r.location}`);
+const fedId = F.split("/").pop();
+const fedSlug = `fed-x-${stamp}`;
+r = await anon.get(`/f/${fedSlug}`);
+check("federação sem plano ativo não aparece ao público", !strip(r.html).includes(`Fed X ${stamp}`));
+r = await alice.get(`${F}/organizers`);
+check("sem plano ativo não se autorizam organizações", /precisa de um plano ativo/.test(strip(r.html)) && !r.html.includes('name="organizerSlug"'));
+r = await alice.get("/admin/federations");
+check("organizador não vê a administração das federações", !strip(r.html).includes("Planos e quotas"));
+const fedForm = (html, field) =>
+  (html.match(/<form[\s\S]*?<\/form>/g) ?? [])
+    .filter((form) => form.includes(`name="${field}"`))
+    .findIndex((form) => html.indexOf(form) > html.indexOf(`Fed X ${stamp}`));
+r = await admin.get("/admin/federations");
+await admin.submit("/admin/federations", 'name="plan"', { plan: "PREMIUM", until: "2027-12-31" }, fedForm(r.html, "plan"));
+r = await anon.get(`/f/${fedSlug}`);
+check("depois de ativada, a página pública aparece", r.status === 200 && strip(r.html).includes(`Fed X ${stamp}`), strip(r.html).slice(0, 200));
+
+r = await alice.submit(`${F}/organizers`, 'name="organizerSlug"', { organizerSlug: "nao-existe" });
+check("identificador de organização desconhecido é recusado", r.html.includes("Não há nenhuma organização"));
+await alice.submit(`${F}/organizers`, 'name="organizerSlug"', { organizerSlug: `liga-x-${stamp}` });
+r = await alice.get(`${F}/organizers`);
+check("organização autorizada aparece na lista", strip(r.html).includes(`Liga X ${stamp}`));
+await alice.submit(`${F}/plans`, 'name="months"', { name: "Sénior", price: "3000", months: "12", maxAge: "" });
+await alice.submit(`${F}/academies`, 'name="validUntil"', { academyName: `Academia Fed ${stamp}`, validUntil: "2027-06-30" });
+await alice.submit(`${F}/news`, 'name="title"', { title: "Abertura da época", body: "A época abre com o Open de Judo. Filiações já disponíveis." });
+r = await anon.get(`/f/${fedSlug}/academies`);
+check("academia filiada aparece na página pública", strip(r.html).includes(`Academia Fed ${stamp}`));
+r = await anon.get(`/f/${fedSlug}`);
+check("notícia aparece na página pública", strip(r.html).includes("Abertura da época"));
+r = await bob.replay(alice, `${F}/plans`, 'name="months"', { name: "Pirata", price: "1", months: "12", maxAge: "" });
+check("outro utilizador não cria planos na federação", r.html.includes("Federação não encontrada"));
+
+// Evento sob a federação a exigir filiação
+r = await alice.submit("/manage/events/new", 'name="date"', {
+  organizerId, name: `Open Fed ${stamp}`, sport: "Judo", date: "2027-06-20", registrationClosesOn: "2027-06-10", venue: "Pavilhão", city: "Luanda", description: "",
+});
+const E2 = new URL(r.location, BASE).pathname;
+await alice.submit(`${E2}/divisions`, 'name="belt"', { gender: "MALE", ageGroup: "Adulto", belt: "Azul", weightClass: "Leve", maxWeightKg: "73", price: "1000" });
+const div2 = (await alice.get(`${E2}/divisions`)).html.match(new RegExp(`${E2}/divisions/(\\w+)`))?.[1];
+await alice.submit(E2, "Publicar evento");
+await alice.submit(`${E2}/settings`, 'name="federationId"', { federationId: fedId, requiresMembership: "1" });
+const reg2 = `/events/open-fed-${stamp}/divisions/${div2}/register`;
+r = await anon.get(`/events/open-fed-${stamp}`);
+check("evento mostra que exige filiação na federação", strip(r.html).includes(`Exige filiação na Fed X ${stamp}`), strip(r.html).slice(0, 300));
+const fedAthlete = { athleteId: "", firstName: "Nzuzi", lastName: "Fed", birthDate: "1996-03-03", academyName: "", mobile: "", provider: "SIMULATOR" };
+r = await carol.submit(reg2, 'name="athleteId"', fedAthlete);
+check("atleta sem filiação é recusado no evento", r.html.includes("exige filiação ativa"), strip(r.html).slice(0, 300));
+
+r = await carol.get(`/f/${fedSlug}/filiacao`);
+const planId = r.html.match(/name="planId"[\s\S]*?<option value="(\w+)"/)?.[1];
+r = await carol.submit(`/f/${fedSlug}/filiacao`, 'name="planId"', { planId, ...fedAthlete, gender: "MALE" });
+const membershipPath = r.location ? new URL(r.location, BASE).pathname : "";
+check("filiação criada leva à página dela", /^\/memberships\/\w+$/.test(membershipPath), `${r.status} ${r.location}`);
+await carol.submit(membershipPath, "Simular aprovado");
+r = await carol.get(membershipPath);
+check("quota paga deixa a filiação em dia", /Filiação em dia até/.test(strip(r.html)), strip(r.html).slice(0, 300));
+r = await carol.get("/registrations");
+check("as minhas inscrições lista a filiação", strip(r.html).includes(`Fed X ${stamp}`));
+r = await carol.get(reg2);
+const fedAthleteId = r.html.match(/<option[^>]*value="(\w+)"[^>]*>Nzuzi/)?.[1];
+r = await carol.submit(reg2, 'name="athleteId"', { ...fedAthlete, athleteId: fedAthleteId });
+check("atleta filiado já se inscreve no evento", r.status === 303 && /^\/registrations\/\w+$/.test(new URL(r.location, BASE).pathname), strip(r.html).slice(0, 300));
+
+r = await alice.get(`${F}/members`);
+check("federação vê o atleta filiado", /Nzuzi Fed/.test(strip(r.html)) && /Em dia/.test(strip(r.html)));
+await alice.submit(`${F}/payouts`, 'name="iban"', { holder: "Fed X", iban: "AO15004000001234567810174" });
+r = await alice.get(`${F}/payouts`);
+check("quotas recebidas e saldo da federação", /Quotas recebidas 3\s000,00\sKz/.test(strip(r.html)) && /Saldo a receber 3\s000,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 500));
+r = await admin.get("/admin/federations");
+await admin.submit("/admin/federations", 'name="reference"', { amount: "3000", reference: "FED-001" }, fedForm(r.html, "reference"));
+r = await alice.get(`${F}/payouts`);
+check("repasse das quotas registado", /FED-001/.test(strip(r.html)) && /Saldo a receber 0,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 500));
+
+// Reembolso de quotas: automático (pelo provedor) e manual
+const M = `${F}/members`;
+r = await bob.replay(alice, M, "Devolver", { reason: "ataque", manual: "1" });
+check("outro utilizador não reembolsa quotas", r.html.includes("Pagamento não encontrado"));
+r = await alice.submit(M, "Devolver", { reason: "", manual: "0" });
+check("reembolso de quota sem motivo é recusado", r.html.includes("motivo do reembolso"));
+await alice.submit(M, "Devolver", { reason: "Lesão antes da época", manual: "0" });
+r = await alice.get(M);
+check("quota reembolsada pelo provedor fica marcada com o motivo", /Reembolsada/.test(strip(r.html)) && /Devolvido pelo provedor · Lesão antes da época/.test(strip(r.html)), strip(r.html).slice(0, 500));
+r = await carol.get(membershipPath);
+check("atleta vê a filiação cancelada e reembolsada", /Filiação cancelada e reembolsada/.test(strip(r.html)) && /3\s000,00\sKz devolvidos/.test(strip(r.html)), strip(r.html).slice(0, 300));
+r = await alice.get(`${F}/payouts`);
+check("reembolso depois do repasse deixa a federação em dívida", /Reembolsado 3\s000,00\sKz/.test(strip(r.html)) && /Em dívida à Camps 3\s000,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 500));
+r = await carol.submit(reg2, 'name="athleteId"', { ...fedAthlete, athleteId: fedAthleteId });
+check("depois do reembolso, o atleta já não cumpre a filiação exigida", r.html.includes("exige filiação ativa"), strip(r.html).slice(0, 300));
+
+r = await carol.submit(`/f/${fedSlug}/filiacao`, 'name="planId"', { planId, ...fedAthlete, athleteId: fedAthleteId, gender: "MALE" });
+const rejoinPath = r.location ? new URL(r.location, BASE).pathname : "";
+check("atleta reembolsado pode voltar a filiar-se", /^\/memberships\/\w+$/.test(rejoinPath) && rejoinPath !== membershipPath, `${r.status} ${r.location}`);
+await carol.submit(rejoinPath, "Simular aprovado");
+r = await alice.get(M);
+const refundIndex = (r.html.match(/<form[\s\S]*?<\/form>/g) ?? []).filter((form) => form.includes("Devolver")).length - 1;
+await alice.submit(M, "Devolver", { reason: "Pago em duplicado", manual: "1" }, Math.max(0, refundIndex));
+r = await alice.get(M);
+check("reembolso manual de quota fica registado", /Devolvido fora da plataforma · Pago em duplicado/.test(strip(r.html)), strip(r.html).slice(0, 500));
+r = await admin.get("/admin/federations");
+check("administração mostra a dívida da federação", /reembolsado 6\s000,00\sKz/.test(strip(r.html)) && /em dívida 3\s000,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 600));
 
 console.log(failures ? `\n${failures} falha(s)` : "\ntudo certo");
 process.exit(failures ? 1 : 0);

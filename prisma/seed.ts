@@ -18,6 +18,9 @@ async function main() {
   await prisma.refund.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.registration.deleteMany();
+  await prisma.payout.deleteMany();
+  // Apaga também membros, organizações, academias, planos, filiações e notícias (em cascata).
+  await prisma.federation.deleteMany();
   await prisma.event.deleteMany();
   await prisma.athleteProfile.deleteMany();
   await prisma.academy.deleteMany();
@@ -32,6 +35,11 @@ async function main() {
       name: "Organizador Demo",
       passwordHash: await hashPassword("camps-demo"),
     },
+  });
+
+  // Administrador da Camps de demonstração: vê a fila de repasses (PLATFORM_ADMIN_EMAILS no .env).
+  await prisma.user.create({
+    data: { email: "admin@camps.local", name: "Admin Camps", passwordHash: await hashPassword("camps-admin") },
   });
 
   const organizer = await prisma.organizer.create({
@@ -119,6 +127,7 @@ async function main() {
           athleteId: athlete.id,
           registeredById: owner.id,
           status: "PAID",
+          confirmedAt: new Date(now - (athleteIndex + 1) * DAY),
           priceCents: division.priceCents,
           payments: {
             create: {
@@ -148,6 +157,77 @@ async function main() {
   });
   for (const match of firstRound) {
     await reportResult(match.id, match.redId as string, { method: "Pontos", redScore: 4, blueScore: 2 });
+  }
+
+  // A categoria em "todos contra todos" fica disputada até ao fim: dá pódio e pontos ao ranking da federação.
+  for (let pass = 0; pass < 5; pass++) {
+    const ready = await prisma.match.findMany({
+      where: { bracket: { division: { eventId: event.id, weightClass: "Meio-pesado" } }, status: "READY" },
+      orderBy: [{ round: "asc" }, { position: "asc" }],
+    });
+    if (ready.length === 0) break;
+    for (const match of ready) await reportResult(match.id, match.redId as string, { method: "Finalização", redScore: 6, blueScore: 0 });
+  }
+
+  // Federação de demonstração (plano Premium ativo): a Copa Camps decorre sob ela, com academias
+  // filiadas, planos de filiação, alguns atletas já filiados e uma notícia. Nome fictício.
+  const federation = await prisma.federation.create({
+    data: {
+      name: "Federação Demo de Jiu-Jitsu de Angola",
+      slug: "federacao-demo",
+      sport: "Jiu-Jitsu",
+      description: "Federação de demonstração da Camps: organiza o circuito nacional, filia academias e atletas e publica o ranking.",
+      color: "#0f766e",
+      plan: "PREMIUM",
+      planExpiresAt: new Date(now + 365 * DAY),
+      payoutHolder: "Federação Demo de Jiu-Jitsu",
+      payoutIban: "AO15004000001234567810174",
+      members: { create: { userId: owner.id } },
+      organizers: { create: { organizerId: organizer.id } },
+      academies: { create: academies.slice(0, 3).map((academy) => ({ academyId: academy.id, validUntil: new Date(now + 300 * DAY) })) },
+      plans: {
+        create: [
+          { name: "Atleta sénior", priceCents: 500_000, months: 12 },
+          { name: "Atleta juvenil", priceCents: 250_000, months: 12, maxAge: 17 },
+        ],
+      },
+      posts: {
+        create: {
+          title: "Calendário do circuito nacional",
+          body: "A primeira etapa do circuito é a Copa Camps de Jiu-Jitsu, no Kilamba. As inscrições estão abertas na página do evento.",
+        },
+      },
+    },
+    include: { plans: true },
+  });
+  await prisma.event.update({ where: { id: event.id }, data: { federationId: federation.id } });
+  const seniorPlan = federation.plans.find((plan) => plan.name === "Atleta sénior")!;
+  const filiados = await prisma.athleteProfile.findMany({ where: { userId: owner.id }, take: 4, orderBy: { createdAt: "asc" } });
+  for (const [index, athlete] of filiados.entries()) {
+    const validFrom = new Date(now - (index + 10) * DAY);
+    await prisma.membership.create({
+      data: {
+        federationId: federation.id,
+        planId: seniorPlan.id,
+        athleteId: athlete.id,
+        boughtById: owner.id,
+        status: "ACTIVE",
+        priceCents: seniorPlan.priceCents,
+        validFrom,
+        validUntil: new Date(validFrom.getTime() + 365 * DAY),
+        payments: {
+          create: {
+            provider: "SIMULATOR",
+            providerRef: `sim_seed_membership_${index}`,
+            amountCents: seniorPlan.priceCents,
+            chargeCurrency: "AOA",
+            chargeAmountCents: seniorPlan.priceCents,
+            status: "SUCCEEDED",
+            settledAt: validFrom,
+          },
+        },
+      },
+    });
   }
 
   // Outros eventos de demonstração, para a lista de eventos e os filtros terem conteúdo.

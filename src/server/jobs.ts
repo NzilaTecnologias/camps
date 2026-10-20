@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { kv } from "./kv";
 import { refreshRefund } from "./refunds";
 import { refreshCommunityStats } from "./stats";
+import { expireStaleMembershipPayment, refreshMembershipPayment, refreshMembershipRefund } from "./memberships";
 import { expireStalePayment, refreshPayment } from "./registrations";
 
 // Trabalho de fundo, fora dos pedidos dos utilizadores. Corre por um destes caminhos:
@@ -54,6 +55,20 @@ export async function reconcilePending(now = new Date()) {
     }
   });
 
+  // Quotas de filiação das federações: mesmas regras.
+  const membershipPayments = await prisma.membershipPayment.findMany({
+    where: { status: "PENDING", providerRef: { not: null }, createdAt: { lt: new Date(now.getTime() - 15_000) } },
+    orderBy: { createdAt: "asc" },
+    take: BATCH,
+    select: { id: true, createdAt: true },
+  });
+  await eachLimited(membershipPayments, PROVIDER_CONCURRENCY, async (payment) => {
+    await refreshMembershipPayment(payment.id, { force: true });
+    if (now.getTime() - payment.createdAt.getTime() > PAYMENT_GIVE_UP_MS && (await expireStaleMembershipPayment(payment.id))) {
+      expired++;
+    }
+  });
+
   const refunds = await prisma.refund.findMany({
     where: { status: "PENDING", manual: false, providerRef: { not: null } },
     orderBy: { createdAt: "asc" },
@@ -61,7 +76,15 @@ export async function reconcilePending(now = new Date()) {
     select: { id: true },
   });
   await eachLimited(refunds, PROVIDER_CONCURRENCY, (refund) => refreshRefund(refund.id));
-  return { payments: payments.length, refunds: refunds.length, expired };
+
+  const membershipRefunds = await prisma.membershipRefund.findMany({
+    where: { status: "PENDING", manual: false, providerRef: { not: null } },
+    orderBy: { createdAt: "asc" },
+    take: BATCH,
+    select: { id: true },
+  });
+  await eachLimited(membershipRefunds, PROVIDER_CONCURRENCY, (refund) => refreshMembershipRefund(refund.id));
+  return { payments: payments.length + membershipPayments.length, refunds: refunds.length + membershipRefunds.length, expired };
 }
 
 /** Corre todo o trabalho de fundo, se nenhum outro servidor o estiver a fazer agora. */

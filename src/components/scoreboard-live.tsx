@@ -3,32 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { clockRemainingMs, formatClock, type Clock, type ScoreboardState } from "@/lib/scoreboard";
 import type { MatState } from "@/server/scoreboard";
+import { subscribeMat } from "./scoreboard-poller";
 
-const POLL_MS = 1000;
-
-/** Vai buscar o estado de uma área de segundo a segundo. `undefined` = ainda a carregar. */
+/** Estado de uma área, atualizado de segundo a segundo pelo sondador da página. `undefined` = a carregar. */
 function useMatState(matId: string): MatState | null | undefined {
   const [state, setState] = useState<MatState | null>();
-
-  useEffect(() => {
-    let active = true;
-    async function load() {
-      try {
-        const response = await fetch(`/api/mats/${matId}/scoreboard`, { cache: "no-store" });
-        const data = response.ok ? ((await response.json()) as MatState) : null;
-        if (active) setState(data);
-      } catch {
-        // Falha de rede: mantém o último estado e tenta outra vez na volta seguinte.
-      }
-    }
-    load();
-    const timer = setInterval(load, POLL_MS);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
-  }, [matId]);
-
+  useEffect(() => subscribeMat(matId, setState), [matId]);
   return state;
 }
 

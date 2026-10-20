@@ -82,6 +82,8 @@ Nenhum destes testes teve erros.
 | Pesquisa de atletas | 11 ms (usa o índice trigram) |
 | Inscrições de um evento ou atleta | < 0,1 ms (índices) |
 
+**Memória:** em 3 minutos de pedidos sempre diferentes (eventos, pesquisas, rankings, placares), um processo subiu de 124 MB para ~700 MB enquanto as caches enchiam e depois estabilizou entre 670 e 710 MB. Não há fuga de memória.
+
 Para repetir:
 
 ```bash
@@ -89,6 +91,27 @@ node scripts/load-test.mjs http://localhost:3000/api/mats/<id>/scoreboard 500 30
 npx tsx scripts/explain.ts
 npx tsx scripts/check-stats.ts   # confere os rankings pré-calculados
 ```
+
+### Vários eventos em direto ao mesmo tempo
+
+Cenário: 10 eventos a decorrer à mesma hora, cada um com 4 áreas em direto, ou seja 40 placares. O teste usou a build de produção com um processo, e as mesas marcavam pontos em todas as áreas de 2 em 2 segundos (`scripts/seed-live.ts` e `scripts/load-test-live.mjs`).
+
+| Medida | Resultado |
+|---|---|
+| Pedidos de placar (cada um com as 4 áreas de um evento) | 820 por segundo, 0 erros, com 1 000 clientes a pedir sem pausa |
+| Espectadores servidos por processo | ~800 (cada espectador real faz 1 pedido por segundo) |
+| Postgres | ~200 transações por segundo para as 40 áreas, incluindo as escritas das mesas. Não cresce com o número de espectadores. |
+| Atraso até uma pontuação nova aparecer | 1,5 s em média, 2,3 s no máximo (1 s de cache + 1 s entre pedidos) |
+
+O que torna isto possível:
+- cada página pede **todas as suas áreas num só pedido** por segundo (`/api/scoreboards`), em vez de um pedido por placar;
+- os pedidos **param quando o separador está escondido**;
+- os ids vão ordenados, por isso **quem vê o mesmo evento faz o mesmo pedido**, e o CDN serve-o a todos;
+- o vídeo não passa pela Camps: vai do YouTube ou do Facebook diretamente para o espectador.
+
+Exemplo: 10 eventos com 20 000 espectadores no total.
+- **Sem CDN:** cerca de 25 processos só para os placares.
+- **Com CDN** (`s-maxage=1`): a origem recebe ~1 pedido por segundo por evento e por ponto de presença. Os espectadores praticamente não pesam.
 
 ## Plano de capacidade para 1 milhão de utilizadores
 
@@ -102,7 +125,7 @@ Hipóteses para o pior momento, um dia de grande torneio:
 
 | Componente | Dimensionamento sugerido | Porquê |
 |---|---|---|
-| Aplicação Next.js | 64 – 96 processos (por exemplo 16 – 24 máquinas de 4 vCPU), com escala automática pelo CPU | Medimos ~25 – 40 páginas/s por processo, num CPU fraco e com o gerador de carga a competir. Um vCPU de servidor dá mais. |
+| Aplicação Next.js | 64 – 96 processos (por exemplo 16 – 24 máquinas de 4 vCPU), com escala automática pelo CPU, e ~1 GB de memória por processo | Medimos ~25 – 40 páginas/s por processo, num CPU fraco e com o gerador de carga a competir. Um vCPU de servidor dá mais. |
 | Postgres | Primário com 4 – 8 vCPU e 16 – 32 GB, discos SSD, backups contínuos (PITR), mais uma réplica de leitura | ~0,05 transações por página dá ~125 transações/s de leitura, mais as escritas de inscrições e pagamentos. Está muito abaixo do limite de um Postgres deste tamanho. |
 | PgBouncer | Modo transaction, ~200 ligações para o Postgres | Muitos processos Node com pools próprios esgotariam as ligações diretas. |
 | Redis | 1 instância gerida (1 – 2 GB) com réplica | Cache do placar, limites, bloqueio do login e da tarefa de fundo. Pouca memória. |

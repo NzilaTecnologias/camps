@@ -9,7 +9,9 @@ import { cityCenter } from "@/lib/geo";
 import { SPORTS } from "@/lib/sports";
 import { requireUser } from "@/server/auth";
 import { getEventWorkspace } from "@/server/organizer";
-import { cancelEventAction, updateEventSettingsAction } from "../../../event-actions";
+import { PLAN_LABEL } from "@/lib/federation-rules";
+import { federationsForOrganizer } from "@/server/federations";
+import { cancelEventAction, setEventFederationAction, updateEventSettingsAction } from "../../../event-actions";
 
 function FormBlock({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
@@ -28,6 +30,7 @@ async function Settings({ params }: { params: Promise<{ eventId: string }> }) {
   const user = await requireUser();
   const event = await getEventWorkspace(user.id, eventId);
   if (!event) return null;
+  const federations = await federationsForOrganizer(event.organizerId);
 
   return (
     <>
@@ -96,6 +99,42 @@ async function Settings({ params }: { params: Promise<{ eventId: string }> }) {
             </div>
           </FormBlock>
         </ActionForm>
+      </Card>
+
+      <Card className="mt-8 p-6">
+        <h3 className="font-display text-xl font-bold uppercase leading-none">Federação</h3>
+        {federations.length === 0 ? (
+          <p className="mt-2 max-w-2xl text-sm text-muted">
+            Nenhuma federação autorizou a sua organização. Peça à federação para a adicionar com o identificador{" "}
+            <code className="rounded bg-foreground/8 px-1.5 py-0.5 font-mono">{event.organizer.slug}</code>.
+          </p>
+        ) : (
+          <>
+            <p className="mt-2 mb-4 max-w-2xl text-sm text-muted">
+              Um evento sob uma federação aparece na página dela e conta para o ranking nacional. Com o plano Premium, a
+              federação pode exigir que os atletas tenham a filiação em dia no dia da prova.
+            </p>
+            <ActionForm
+              action={setEventFederationAction.bind(null, event.id)}
+              submitLabel="Guardar federação"
+              submitVariant="secondary"
+              className="flex max-w-xl flex-col gap-4"
+            >
+              <SelectField label="Federação" name="federationId" defaultValue={event.federationId ?? ""}>
+                <option value="">Nenhuma</option>
+                {federations.map((federation) => (
+                  <option key={federation.id} value={federation.id}>
+                    {federation.name} ({PLAN_LABEL[federation.plan!]})
+                  </option>
+                ))}
+              </SelectField>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" name="requiresMembership" value="1" defaultChecked={event.requiresMembership} className="mt-1" />
+                <span>Só aceitar atletas com filiação ativa nesta federação (plano Premium)</span>
+              </label>
+            </ActionForm>
+          </>
+        )}
       </Card>
 
       {event.status !== "CANCELLED" && (

@@ -2,11 +2,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
-import { Field } from "@/components/field";
+import { Field, SelectField } from "@/components/field";
 import { EventStatusBadge } from "@/components/status-badges";
-import { Card, Empty, Icon, LinkButton, PageTitle } from "@/components/ui";
+import { Badge, Card, Empty, Icon, LinkButton, PageTitle } from "@/components/ui";
+import { PLAN_LABEL, planActive } from "@/lib/federation-rules";
 import { count, formatDateRange } from "@/lib/format";
-import { sportImage } from "@/lib/sports";
+import { SPORTS, sportImage } from "@/lib/sports";
+import { listMyFederations } from "@/server/federations";
+import { createFederationAction } from "./federation-actions";
 import { requireUser } from "@/server/auth";
 import { listOrganizers } from "@/server/manage";
 import { createOrganizerAction } from "./actions";
@@ -55,7 +58,7 @@ function EventTile({ event }: { event: Organizer["events"][number] }) {
 
 async function Dashboard() {
   const user = await requireUser();
-  const organizers = await listOrganizers(user.id);
+  const [organizers, federations] = await Promise.all([listOrganizers(user.id), listMyFederations(user.id)]);
   const events = organizers.flatMap((organizer) => organizer.events);
   const registrations = events.reduce((sum, event) => sum + event._count.registrations, 0);
   const published = events.filter((event) => event.status === "PUBLISHED").length;
@@ -97,6 +100,10 @@ async function Dashboard() {
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Organização</p>
                   <h2 className="font-display text-2xl font-bold uppercase leading-none">{organizer.name}</h2>
+                  <p className="mt-1 text-xs text-muted">
+                    Identificador <code className="rounded bg-foreground/8 px-1.5 py-0.5 font-mono">{organizer.slug}</code> · dê-o a uma
+                    federação para poder pôr eventos sob ela
+                  </p>
                 </div>
                 <span className="text-sm text-muted">{count(organizer.events.length, "evento", "eventos")}</span>
               </div>
@@ -113,6 +120,36 @@ async function Dashboard() {
               )}
             </section>
           ))}
+
+          {federations.length > 0 && (
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Federações</p>
+              <h2 className="mb-4 font-display text-2xl font-bold uppercase leading-none">As minhas federações</h2>
+              <ul className="grid gap-4 sm:grid-cols-2">
+                {federations.map((federation) => (
+                  <li key={federation.id}>
+                    <Link
+                      href={`/manage/federations/${federation.id}`}
+                      className="group flex h-full flex-col gap-3 rounded-xl border border-line bg-surface p-5 transition hover:-translate-y-0.5 hover:border-foreground/30"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="h-8 w-1.5 rounded-full" style={{ background: federation.color }} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-semibold group-hover:text-primary">{federation.name}</p>
+                          <p className="text-xs text-muted">{federation.sport}</p>
+                        </div>
+                        {planActive(federation) ? <Badge tone="success">{PLAN_LABEL[federation.plan!]}</Badge> : <Badge>Inativo</Badge>}
+                      </div>
+                      <p className="text-sm text-muted">
+                        {count(federation._count.events, "evento", "eventos")} · {count(federation._count.academies, "academia", "academias")} ·{" "}
+                        {count(federation._count.memberships, "atleta filiado", "atletas filiados")}
+                      </p>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
 
         <aside className="flex flex-col gap-4">
@@ -132,6 +169,23 @@ async function Dashboard() {
               className="flex flex-col gap-4"
             >
               <Field label="Nome" name="name" required />
+            </ActionForm>
+          </Card>
+          <Card className="p-5">
+            <h2 className="mb-1 font-display text-xl font-bold uppercase leading-none">Nova federação</h2>
+            <p className="mb-4 text-sm text-muted">
+              Página própria, filiação de academias e atletas e ranking nacional. Fica ativa depois de a Camps ativar o
+              plano.
+            </p>
+            <ActionForm action={createFederationAction} submitLabel="Criar federação" submitVariant="secondary" className="flex flex-col gap-4">
+              <Field label="Nome" name="name" placeholder="Federação Angolana de Jiu-Jitsu" required />
+              <SelectField label="Modalidade" name="sport" defaultValue="Jiu-Jitsu">
+                {SPORTS.map((sport) => (
+                  <option key={sport.name} value={sport.name}>
+                    {sport.name}
+                  </option>
+                ))}
+              </SelectField>
             </ActionForm>
           </Card>
         </aside>

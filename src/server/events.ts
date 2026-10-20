@@ -112,6 +112,7 @@ export async function getPublishedEvent(slug: string) {
     where: { slug, status: "PUBLISHED" },
     include: {
       organizer: { select: { name: true } },
+      federation: { select: { name: true, slug: true, plan: true, planExpiresAt: true } },
       // Só as áreas com alguma coisa a acontecer: transmissão no ar ou luta no placar.
       mats: {
         where: { OR: [{ isLive: true }, { currentMatchId: { not: null } }] },

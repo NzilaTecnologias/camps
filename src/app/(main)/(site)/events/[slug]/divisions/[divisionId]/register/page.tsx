@@ -6,6 +6,7 @@ import { Field, SelectField } from "@/components/field";
 import { PaymentFields } from "@/components/payment-fields";
 import { BackLink, Card, Empty, Icon, PageTitle } from "@/components/ui";
 import { formatDate, formatMoney, formatWeight } from "@/lib/format";
+import { premiumActive } from "@/lib/federation-rules";
 import { computePrice } from "@/lib/pricing";
 import { requireUser } from "@/server/auth";
 import { getRegistrationContext } from "@/server/registrations";
@@ -34,6 +35,14 @@ async function RegisterForm({ params }: { params: Promise<{ slug: string; divisi
           <Empty>{closedReason}.</Empty>
         ) : (
           <Card className="p-6">
+            {division.event.requiresMembership && division.event.federation && premiumActive(division.event.federation) && (
+              <p className="mb-5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-sm">
+                Este evento exige filiação ativa na {division.event.federation.name} no dia da prova.{" "}
+                <a href={`/f/${division.event.federation.slug}/filiacao`} className="font-semibold text-primary hover:underline">
+                  Filiar um atleta
+                </a>
+              </p>
+            )}
             <ActionForm
               action={registerAction.bind(null, slug, division.id)}
               submitLabel={isFree ? "Confirmar inscrição" : "Inscrever e pagar"}

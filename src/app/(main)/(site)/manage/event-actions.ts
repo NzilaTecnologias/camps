@@ -11,8 +11,10 @@ import {
   clearWeighIn,
   generateMissingBrackets,
   recordWeighIn,
+  setEventFederation,
   updateEventSettings,
 } from "@/server/organizer";
+import { updatePayoutDetails } from "@/server/billing";
 import { cancelRegistration, requestRefund } from "@/server/refunds";
 
 // Ações das secções do painel de um evento. Cada função do servidor confirma que o
@@ -130,6 +132,23 @@ export async function generateMissingBracketsAction(eventId: string, _state: Act
     const { generated } = await generateMissingBrackets(user.id, eventId, text(formData, "type"));
     publicDataChanged({ eventId });
     if (generated === 0) throw new UserError("Nenhuma categoria sem chave tem pelo menos dois atletas aptos");
+    refresh();
+  });
+}
+
+export async function updatePayoutDetailsAction(organizerId: string, _state: ActionState, formData: FormData) {
+  return runAction(async () => {
+    const user = await requireUser();
+    await updatePayoutDetails(user.id, organizerId, text(formData, "holder"), text(formData, "iban"));
+    refresh();
+  });
+}
+
+export async function setEventFederationAction(eventId: string, _state: ActionState, formData: FormData) {
+  return runAction(async () => {
+    const user = await requireUser();
+    await setEventFederation(user.id, eventId, text(formData, "federationId"), text(formData, "requiresMembership") === "1");
+    publicDataChanged({ eventId, events: true, community: true });
     refresh();
   });
 }

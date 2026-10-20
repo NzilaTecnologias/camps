@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import Link from "next/link";
 import { Suspense } from "react";
 import { AutoRefresh } from "@/components/auto-refresh";
@@ -10,6 +11,9 @@ import { listLiveEvents, listLiveStreams } from "@/server/community";
 import { listPublishedEvents } from "@/server/events";
 
 async function LiveNow() {
+  // Sem nada no ar, a página mostra os próximos eventos com "faltam N dias", que depende da hora
+  // deste pedido: esta parte é sempre calculada no momento.
+  await connection();
   const [streams, events] = await Promise.all([listLiveStreams(), listLiveEvents()]);
   const streamingMats = new Set(streams.map((stream) => stream.matId));
   // Áreas com uma luta no placar mas sem vídeo no ar: aparecem só com o placar.

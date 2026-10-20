@@ -3,7 +3,9 @@ import { UserError } from "@/lib/errors";
 import { UTC_OFFSET } from "@/lib/format";
 import { normalizeAngolanMobile } from "@/lib/phone";
 import { computePrice } from "@/lib/pricing";
+import { premiumActive } from "@/lib/federation-rules";
 import { findUsableCoupon } from "./coupons";
+import { activeMembership } from "./memberships";
 import { kv } from "./kv";
 import { appUrl, availableProviders, getProvider, providerFor } from "./payments";
 import type { Outcome } from "./payments/types";
@@ -21,7 +23,7 @@ export async function getRegistrationContext(userId: string, eventSlug: string, 
   const division = await prisma.division.findFirst({
     where: { id: divisionId, event: { slug: eventSlug, status: "PUBLISHED" } },
     include: {
-      event: true,
+      event: { include: { federation: { select: { id: true, name: true, slug: true, plan: true, planExpiresAt: true } } } },
       _count: { select: { registrations: { where: { status: "PAID" } } } },
     },
   });
@@ -72,10 +74,20 @@ export async function startRegistration(userId: string, input: RegistrationInput
   // Valida o método antes de gravar o que quer que seja.
   if (!isFree) requireProvider(input.provider, input.mobile);
 
+  // Evento que exige filiação (plano Premium da federação): o atleta tem de estar filiado no dia da prova.
+  const federation = division.event.requiresMembership ? division.event.federation : null;
+  const needsMembership = federation !== null && premiumActive(federation);
+  if (needsMembership && !input.athleteId) {
+    throw new UserError(`Este evento exige filiação ativa na ${federation.name}. Filie primeiro o atleta em /f/${federation.slug}/filiacao.`);
+  }
+
   const athlete = input.athleteId
     ? await prisma.athleteProfile.findFirst({ where: { id: input.athleteId, userId, gender: division.gender } })
     : await createAthlete(userId, division, input);
   if (!athlete) throw new UserError("Atleta não encontrado");
+  if (needsMembership && !(await activeMembership(athlete.id, federation.id, division.event.startsAt))) {
+    throw new UserError(`Este evento exige filiação ativa na ${federation.name} no dia da prova. Filie o atleta em /f/${federation.slug}/filiacao.`);
+  }
 
   // Idade de competição: a que o atleta completa no ano do evento.
   const age = division.event.startsAt.getUTCFullYear() - athlete.birthDate.getUTCFullYear();
@@ -93,6 +105,7 @@ export async function startRegistration(userId: string, input: RegistrationInput
     discountCents: price.discountCents,
     couponId: coupon?.id ?? null,
     status: isFree ? ("PAID" as const) : ("INCOMPLETE" as const),
+    ...(isFree ? { confirmedAt: new Date() } : {}),
   };
   const registration = await prisma.registration.upsert({
     where: key,
@@ -239,6 +252,11 @@ async function settle(paymentId: string, outcome: Outcome) {
     if (count === 0 || outcome.status !== "SUCCEEDED") return;
     const payment = await tx.payment.findUniqueOrThrow({ where: { id: paymentId } });
     await tx.registration.update({ where: { id: payment.registrationId }, data: { status: "PAID" } });
+    // Só a primeira confirmação conta: é a partir dela que o atleta entra na taxa da Camps.
+    await tx.registration.updateMany({
+      where: { id: payment.registrationId, confirmedAt: null },
+      data: { confirmedAt: new Date() },
+    });
   });
 }
 

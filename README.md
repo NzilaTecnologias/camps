@@ -16,7 +16,7 @@ npm run dev          # http://localhost:3000
 
 `npm run db:up` imprime a URL de conexão. Se a porta for diferente da que está em `.env`, atualize `DATABASE_URL`.
 
-O seed cria a conta `organizador@camps.local` com a palavra-passe `camps-demo`, só para desenvolvimento local. O painel do organizador fica em `/manage`.
+O seed cria a conta `organizador@camps.local` com a palavra-passe `camps-demo`, só para desenvolvimento local. O painel do organizador fica em `/manage`. Cria também o administrador da Camps `admin@camps.local` (palavra-passe `camps-admin`), que vê a fila de repasses em `/admin/payouts`.
 
 ## Área do organizador
 
@@ -30,12 +30,38 @@ Cada evento tem um painel próprio em `/manage/events/<id>`, com um menu por sec
 | Inscrições | Lista com filtros por estado, categoria e pesquisa; cancelar inscrições por pagar ou gratuitas |
 | Descontos e cupões | Desconto antecipado (percentagem até uma data) e cupões de percentagem ou valor fixo, com limite de usos e validade. Os dois acumulam |
 | Pagamentos e reembolsos | Totais cobrados e reembolsados; reembolso total pelo provedor (ProxyPay `type: refund`, PayPal refund da captura) ou registo de devolução feita fora da plataforma |
+| Faturação e repasses | Extrato do evento: cobrado online − reembolsos − taxa Camps − transferências já feitas = saldo a receber (ou em dívida). IBAN da organização para os repasses |
 | Pesagem | Peso de cada atleta confirmado; quem fica acima do limite sai da chave quando ela é gerada |
 | Chaves | Estado de cada categoria, gerar ou regerar, e gerar de uma vez as que faltam |
 | Placar e áreas | Áreas de luta, a luta em cada placar e as lutas prontas para chamar |
 | Transmissão | Endereço do YouTube/Facebook por área, pôr e tirar do ar, sobreposição para o OBS |
 
 Um reembolso confirmado passa o pagamento a `REFUNDED` e cancela a inscrição. Uma inscrição paga só se cancela reembolsando-a.
+
+## Modelo de negócio
+
+Inspirado nos créditos do Smoothcomp: atletas e público usam a Camps de graça e o organizador paga uma **taxa por atleta confirmado** em cada evento (`PLATFORM_FEE_PER_ATHLETE_KZ`, por omissão 500 Kz). Cada atleta conta uma vez por evento, seja em quantas categorias for, e continua a contar se desistir ou for reembolsado. Cada evento grava a taxa em vigor quando é criado.
+
+As inscrições pagas online entram na conta da Camps (Multicaixa Express / PayPal). A taxa é descontada delas e o saldo é transferido para o IBAN da organização: os administradores (`PLATFORM_ADMIN_EMAILS`) veem a fila em `/admin/payouts` e registam cada transferência com a referência bancária. Eventos só com inscrições manuais ou gratuitas ficam com saldo negativo (em dívida à Camps).
+
+### Plano Federação
+
+Federações e ligas têm uma página própria em `/f/<identificador>` e um painel em `/manage/federations/<id>`. Funciona com uma assinatura anual, ativada por um administrador da Camps em `/admin/federations` depois do pagamento (preços em `FEDERATION_BASIC_KZ` e `FEDERATION_PREMIUM_KZ`):
+
+| | Básico | Premium |
+|---|---|---|
+| Página da federação com os eventos das organizações autorizadas | ✓ | ✓ |
+| Filiação de academias com validade | ✓ | ✓ |
+| Filiação individual de atletas, paga online (Multicaixa Express / PayPal) | | ✓ |
+| Eventos que só aceitam atletas com filiação em dia no dia da prova | | ✓ |
+| Ranking nacional de atletas e academias (pódios: 9 / 3 / 1 pontos) | | ✓ |
+| Notícias na página da federação | | ✓ |
+
+As organizações dão o seu identificador (no painel, por baixo do nome) à federação, que as autoriza; depois escolhem a federação na Página do evento. As quotas de filiação vão inteiras para a federação, pelo mesmo sistema de repasses: a Camps é paga pela assinatura, não pelas quotas. A federação pode reembolsar uma quota (sempre o valor total, pelo provedor que cobrou ou registando uma devolução feita fora da plataforma): a filiação é cancelada e o valor sai do extrato; se a quota já tinha sido transferida, a federação fica em dívida. O seed cria a "Federação Demo de Jiu-Jitsu de Angola" (`/f/federacao-demo`), Premium, com a Copa Camps sob ela.
+
+Ainda não implementado (precisa de decisão): transmissão paga (exige contratar alojamento de vídeo, por exemplo Mux ou Cloudflare Stream) e gestão de academias (produto à parte).
+
+Antes de cobrar em produção, confirmar com um jurista e com a ProxyPay o enquadramento de receber pagamentos em nome dos organizadores e a faturação da taxa com IVA.
 
 ## Pagamentos
 
@@ -96,6 +122,7 @@ A arquitetura está preparada para 1 milhão de utilizadores: caches partilhadas
 | `npm test` | Testes unitários (motor de chaves, palavra-passe, pagamentos) |
 | `npm run test:e2e` | Percorre registo, painel, chave, resultados, inscrição e pagamento pelo HTTP (`scripts/e2e.mjs` e `scripts/e2e-extra.mjs`). Precisa do app rodando e grava dados de teste no banco; `npm run db:seed` limpa depois |
 | `node scripts/load-test.mjs <url> [clientes] [segundos]` | Teste de carga simples; com `--pg=<DATABASE_URL>` conta as transações no Postgres |
+| `npx tsx scripts/seed-live.ts [eventos] [áreas]` · `node scripts/load-test-live.mjs <origem> <DATABASE_URL>` | Vários eventos em direto e espectadores a seguir os placares (nunca numa base real) |
 | `npx tsx scripts/seed-scale.ts [utilizadores]` | Dados em massa para testes de carga (nunca numa base real) |
 | `npx tsx scripts/explain.ts` · `npx tsx scripts/check-stats.ts` | Tempos e planos das consultas pesadas · conferência dos rankings pré-calculados |
 | `npm run typecheck` | Checagem de tipos |

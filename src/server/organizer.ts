@@ -3,6 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { UserError } from "@/lib/errors";
 import { UTC_OFFSET } from "@/lib/format";
+import { planActive, premiumActive } from "@/lib/federation-rules";
 import { parseLatLng } from "@/lib/geo";
 import { SPORT_NAMES } from "@/lib/sports";
 import { createBracket } from "./brackets";
@@ -15,7 +16,7 @@ import { memberOf } from "./manage";
 export const getEventWorkspace = cache(async (userId: string, eventId: string) => {
   return prisma.event.findFirst({
     where: { id: eventId, ...memberOf(userId) },
-    include: { organizer: { select: { name: true } } },
+    include: { organizer: { select: { name: true, slug: true } } },
   });
 });
 
@@ -351,4 +352,25 @@ export async function generateMissingBrackets(userId: string, eventId: string, t
   const ready = divisions.filter((division) => division._count.registrations >= 2);
   for (const division of ready) await createBracket(division.id, type);
   return { generated: ready.length, skipped: divisions.length - ready.length };
+}
+
+/**
+ * Põe (ou tira) o evento sob uma federação. Só federações com plano ativo que autorizaram a
+ * organização do evento; exigir filiação só com o plano Premium.
+ */
+export async function setEventFederation(userId: string, eventId: string, federationId: string, requiresMembership: boolean) {
+  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId) } });
+  if (!event) throw new UserError("Evento não encontrado");
+  if (!federationId) {
+    await prisma.event.update({ where: { id: event.id }, data: { federationId: null, requiresMembership: false } });
+    return;
+  }
+  const federation = await prisma.federation.findFirst({
+    where: { id: federationId, organizers: { some: { organizerId: event.organizerId } } },
+  });
+  if (!federation || !planActive(federation)) throw new UserError("Esta federação não autorizou a sua organização");
+  if (requiresMembership && !premiumActive(federation)) {
+    throw new UserError("Exigir filiação só está disponível em federações com o plano Premium");
+  }
+  await prisma.event.update({ where: { id: event.id }, data: { federationId: federation.id, requiresMembership } });
 }
