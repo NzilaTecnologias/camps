@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:e2e": "node scripts/e2e.mjs && node scripts/e2e-extra.mjs && node scripts/e2e-auth.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "db:up": "prisma dev --name camps --detach",
     "db:migrate": "prisma migrate dev && prisma generate",
     "db:seed": "prisma db seed",

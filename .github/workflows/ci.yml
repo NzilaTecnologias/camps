@@ -54,7 +54,7 @@ jobs:
           for i in $(seq 1 90); do curl -fs http://localhost:3000/api/health && break; sleep 2; done
           npm run test:e2e
       - if: failure()
-        run: tail -200 dev.log
+        run: tail -200 dev.log || true
 
   docker:
     runs-on: ubuntu-latest
