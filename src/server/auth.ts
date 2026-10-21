@@ -1,23 +1,29 @@
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
-import { connection } from "next/server";
+import { after, connection } from "next/server";
 import { redirect } from "next/navigation";
 import { cache } from "react";
+import type { AuthTokenKind } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { renderEmail } from "@/lib/email-template";
 import { UserError } from "@/lib/errors";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import { deliverEmail, enqueueEmail } from "./email";
 import { clearFailures, lockedForMinutes, recordFailure } from "./login-throttle";
+import { appUrl } from "./payments";
 
 export const SESSION_COOKIE = "camps_session";
 const SESSION_DAYS = 30;
 const MAX_PASSWORD_LENGTH = 200;
+const VERIFY_EMAIL_HOURS = 7 * 24;
+const PASSWORD_RESET_MINUTES = 60;
 
 // Hash de uma senha qualquer, para gastar o mesmo tempo quando o e-mail não existe.
 let dummyHash: Promise<string> | undefined;
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
-export type CurrentUser = { id: string; name: string; email: string };
+export type CurrentUser = { id: string; name: string; email: string; emailVerified: boolean };
 
 async function createSession(userId: string) {
   const token = randomBytes(32).toString("base64url");
@@ -35,24 +41,32 @@ async function createSession(userId: string) {
   });
 }
 
-export async function signUp(input: { name: string; email: string; password: string }) {
+function checkPassword(password: string) {
+  if (password.length < 8) throw new UserError("A palavra-passe precisa de ter pelo menos 8 caracteres");
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    throw new UserError(`A palavra-passe pode ter no máximo ${MAX_PASSWORD_LENGTH} caracteres`);
+  }
+}
+
+export async function signUp(input: { name: string; email: string; password: string; acceptedTerms: boolean }) {
   const email = input.email.trim().toLowerCase();
   const name = input.name.trim();
   if (name.length < 2) throw new UserError("Informe seu nome");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new UserError("Informe um e-mail válido");
-  if (input.password.length < 8) throw new UserError("A palavra-passe precisa de ter pelo menos 8 caracteres");
-  if (input.password.length > MAX_PASSWORD_LENGTH) {
-    throw new UserError(`A palavra-passe pode ter no máximo ${MAX_PASSWORD_LENGTH} caracteres`);
-  }
+  checkPassword(input.password);
   if (name.length > 120 || email.length > 254) throw new UserError("Nome ou e-mail demasiado longo");
+  if (!input.acceptedTerms) {
+    throw new UserError("Para criar conta, aceite os Termos de utilização e a Política de privacidade");
+  }
 
   if (await prisma.user.findUnique({ where: { email }, select: { id: true } })) {
     throw new UserError("Já existe uma conta com este e-mail");
   }
   const user = await prisma.user.create({
-    data: { name, email, passwordHash: await hashPassword(input.password) },
+    data: { name, email, passwordHash: await hashPassword(input.password), termsAcceptedAt: new Date() },
   });
   await createSession(user.id);
+  await sendVerificationEmail(user);
 }
 
 export async function logIn(input: { email: string; password: string }) {
@@ -86,15 +100,149 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   if (!token) return null;
   const session = await prisma.session.findUnique({
     where: { tokenHash: hashToken(token) },
-    select: { expiresAt: true, user: { select: { id: true, name: true, email: true } } },
+    select: { expiresAt: true, user: { select: { id: true, name: true, email: true, emailVerifiedAt: true } } },
   });
   await connection();
   if (!session || session.expiresAt < new Date()) return null;
-  return session.user;
+  const { emailVerifiedAt, ...user } = session.user;
+  return { ...user, emailVerified: emailVerifiedAt !== null };
 });
 
 export async function requireUser(): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   return user;
+}
+
+/**
+ * Para pagar ou organizar é preciso ter o e-mail confirmado: os recibos e os avisos de reembolso
+ * vão para lá, e assim ninguém usa o e-mail de outra pessoa.
+ */
+export async function requireVerifiedUser(): Promise<CurrentUser> {
+  const user = await requireUser();
+  if (!user.emailVerified) {
+    throw new UserError(
+      `Confirme primeiro o seu e-mail: enviámos um link para ${user.email}. Não chegou? Use "Reenviar" no aviso no topo da página.`,
+    );
+  }
+  return user;
+}
+
+// ---------- Links enviados por e-mail ----------
+
+/** Cria um link de uso único e anula os anteriores do mesmo tipo ainda por usar. */
+async function issueToken(userId: string, kind: AuthTokenKind, minutes: number): Promise<string> {
+  const token = randomBytes(32).toString("base64url");
+  await prisma.$transaction([
+    prisma.authToken.deleteMany({ where: { userId, kind, usedAt: null } }),
+    prisma.authToken.create({
+      data: { userId, kind, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + minutes * 60 * 1000) },
+    }),
+  ]);
+  return token;
+}
+
+/** Envia depois de responder ao pedido: quem pede não espera pela Resend (e não fica a saber se a conta existe pelo tempo de resposta). */
+function deliverLater(emailId: string) {
+  after(() => deliverEmail(emailId));
+}
+
+async function sendVerificationEmail(user: { id: string; name: string; email: string }) {
+  const token = await issueToken(user.id, "VERIFY_EMAIL", VERIFY_EMAIL_HOURS * 60);
+  const emailId = await enqueueEmail(
+    prisma,
+    user.email,
+    renderEmail({
+      subject: "Confirme o seu e-mail na Camps",
+      heading: "Confirme o seu e-mail",
+      paragraphs: [
+        `Olá ${user.name},`,
+        "Falta só um passo: confirme que este e-mail é seu. Depois disso pode pagar inscrições, filiar-se e organizar eventos.",
+      ],
+      action: { label: "Confirmar e-mail", url: `${appUrl()}/verify-email?token=${token}` },
+      footnote: `O link é válido durante ${VERIFY_EMAIL_HOURS / 24} dias. Se não criou uma conta na Camps, ignore este e-mail.`,
+    }),
+    { sensitive: true },
+  );
+  deliverLater(emailId);
+}
+
+export async function resendVerificationEmail(userId: string) {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { id: true, name: true, email: true, emailVerifiedAt: true },
+  });
+  if (user.emailVerifiedAt) return;
+  await sendVerificationEmail(user);
+}
+
+/** Gasta um link: devolve o utilizador se o link existe, é deste tipo, não expirou e não foi usado. */
+async function consumeToken(token: string, kind: AuthTokenKind): Promise<string | null> {
+  if (!token || token.length > 100) return null;
+  const tokenHash = hashToken(token);
+  const { count } = await prisma.authToken.updateMany({
+    where: { tokenHash, kind, usedAt: null, expiresAt: { gt: new Date() } },
+    data: { usedAt: new Date() },
+  });
+  if (count === 0) return null;
+  const row = await prisma.authToken.findUniqueOrThrow({ where: { tokenHash }, select: { userId: true } });
+  return row.userId;
+}
+
+/** Só para mostrar a página certa: não gasta o link. */
+export async function tokenIsValid(token: string, kind: AuthTokenKind): Promise<boolean> {
+  if (!token || token.length > 100) return false;
+  const row = await prisma.authToken.findUnique({
+    where: { tokenHash: hashToken(token) },
+    select: { kind: true, usedAt: true, expiresAt: true },
+  });
+  await connection();
+  return row !== null && row.kind === kind && row.usedAt === null && row.expiresAt > new Date();
+}
+
+export async function verifyEmail(token: string) {
+  const userId = await consumeToken(token, "VERIFY_EMAIL");
+  if (!userId) throw new UserError("Este link já foi usado ou expirou. Entre na sua conta e peça um novo.");
+  await prisma.user.updateMany({ where: { id: userId, emailVerifiedAt: null }, data: { emailVerifiedAt: new Date() } });
+}
+
+/** Responde sempre da mesma maneira, exista ou não uma conta com o e-mail. */
+export async function requestPasswordReset(rawEmail: string) {
+  const email = rawEmail.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new UserError("Informe um e-mail válido");
+  const user = await prisma.user.findUnique({ where: { email }, select: { id: true, name: true, email: true } });
+  if (!user) return;
+  const token = await issueToken(user.id, "PASSWORD_RESET", PASSWORD_RESET_MINUTES);
+  const emailId = await enqueueEmail(
+    prisma,
+    user.email,
+    renderEmail({
+      subject: "Definir uma nova palavra-passe na Camps",
+      heading: "Nova palavra-passe",
+      paragraphs: [`Olá ${user.name},`, "Recebemos um pedido para definir uma nova palavra-passe na sua conta da Camps."],
+      action: { label: "Definir nova palavra-passe", url: `${appUrl()}/reset-password?token=${token}` },
+      footnote: `O link é válido durante ${PASSWORD_RESET_MINUTES} minutos e só pode ser usado uma vez. Se não foi você que pediu, ignore este e-mail: a palavra-passe atual continua a funcionar.`,
+    }),
+    { sensitive: true },
+  );
+  deliverLater(emailId);
+}
+
+/** Troca a palavra-passe, termina todas as sessões abertas e entra com uma nova. */
+export async function resetPassword(token: string, password: string, confirmation: string) {
+  checkPassword(password);
+  if (password !== confirmation) throw new UserError("As duas palavras-passe não são iguais");
+  const passwordHash = await hashPassword(password);
+  const userId = await consumeToken(token, "PASSWORD_RESET");
+  if (!userId) throw new UserError("Este link já foi usado ou expirou. Peça um novo.");
+
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true, emailVerifiedAt: true } });
+  await prisma.$transaction([
+    // Quem abriu o link recebido por e-mail provou que o e-mail é seu.
+    prisma.user.update({ where: { id: userId }, data: { passwordHash, emailVerifiedAt: user.emailVerifiedAt ?? new Date() } }),
+    prisma.session.deleteMany({ where: { userId } }),
+    prisma.authToken.deleteMany({ where: { userId, kind: "PASSWORD_RESET", usedAt: null } }),
+  ]);
+  await clearFailures(user.email);
+  await createSession(userId);
 }

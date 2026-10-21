@@ -87,6 +87,10 @@ model User {
   passwordHash String
   name         String
   createdAt    DateTime @default(now())
+  /// Quando o utilizador abriu o link de confirmação enviado para o e-mail.
+  emailVerifiedAt DateTime?
+  /// Quando aceitou os Termos de utilização e a Política de privacidade (no registo).
+  termsAcceptedAt DateTime?
 
   // Uma conta pode gerenciar vários perfis (ex.: pai inscrevendo os filhos).
   athletes      AthleteProfile[]
@@ -96,6 +100,52 @@ model User {
   refunds       Refund[]
   federations   FederationMember[]
   membershipRefunds MembershipRefund[]
+  authTokens    AuthToken[]
+}
+
+enum AuthTokenKind {
+  VERIFY_EMAIL
+  PASSWORD_RESET
+}
+
+/// Links de uso único enviados por e-mail (confirmar o e-mail, nova palavra-passe).
+model AuthToken {
+  id        String        @id @default(cuid())
+  userId    String
+  kind      AuthTokenKind
+  /// SHA-256 do token que vai no link; o token em si nunca é gravado.
+  tokenHash String        @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind])
+  @@index([expiresAt])
+}
+
+/// Fila de e-mails. Cada e-mail é gravado antes de ser enviado (na mesma transação do que o
+/// originou, quando há uma) e a tarefa de fundo volta a tentar os que falharam.
+model EmailOutbox {
+  id            String    @id @default(cuid())
+  to            String
+  subject       String
+  /// Apagados depois do envio quando `sensitive`: os links de acesso não ficam guardados.
+  html          String
+  text          String
+  sensitive     Boolean   @default(false)
+  attempts      Int       @default(0)
+  /// Próxima tentativa; nulo quando já foi enviado ou se desistiu dele.
+  nextAttemptAt DateTime? @default(now())
+  lastError     String?
+  /// Identificador do e-mail na Resend.
+  providerId    String?
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([nextAttemptAt])
+  @@index([createdAt])
 }
 
 model Session {

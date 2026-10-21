@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { deliverPendingEmails } from "./email";
 import { kv } from "./kv";
 import { refreshRefund } from "./refunds";
 import { refreshCommunityStats } from "./stats";
@@ -26,6 +27,7 @@ export type JobReport = {
   expired: number;
   stats: boolean;
   sessions: number;
+  emails: number;
   ms: number;
 };
 
@@ -90,7 +92,7 @@ export async function reconcilePending(now = new Date()) {
 /** Corre todo o trabalho de fundo, se nenhum outro servidor o estiver a fazer agora. */
 export async function runJobs(options: { forceStats?: boolean } = {}): Promise<JobReport> {
   const started = Date.now();
-  const report: JobReport = { ran: false, payments: 0, refunds: 0, expired: 0, stats: false, sessions: 0, ms: 0 };
+  const report: JobReport = { ran: false, payments: 0, refunds: 0, expired: 0, stats: false, sessions: 0, emails: 0, ms: 0 };
 
   // O bloqueio não segura nenhuma ligação à base de dados: o primeiro a incrementar a chave fica
   // com o trabalho, os outros saem logo. (Um bloqueio dentro de uma transação aberta prenderia
@@ -112,6 +114,10 @@ export async function runJobs(options: { forceStats?: boolean } = {}): Promise<J
 
     const { count } = await prisma.session.deleteMany({ where: { expiresAt: { lt: new Date() } } });
     report.sessions = count;
+
+    // E-mails que falharam ou ficaram por enviar, e links de acesso caducados há mais de um dia.
+    report.emails = await deliverPendingEmails();
+    await prisma.authToken.deleteMany({ where: { expiresAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } } });
   } finally {
     await store.del(LOCK_KEY);
   }

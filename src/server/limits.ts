@@ -20,6 +20,11 @@ export const LIMITS = {
   payment: { limit: 30, windowMs: 10 * MINUTE },
   // Impede adivinhar códigos de cupão por tentativa e erro.
   coupon: { limit: 20, windowMs: 10 * MINUTE },
+  // Links enviados por e-mail (confirmação, nova palavra-passe): por IP e por e-mail de destino,
+  // para ninguém usar a Camps para encher a caixa de correio de outra pessoa.
+  emailLink: { limit: 5, windowMs: 60 * MINUTE },
+  // Por IP é mais largo: em Angola muitos telemóveis saem pelo mesmo IP da operadora.
+  emailLinkIp: { limit: 30, windowMs: 60 * MINUTE },
 } as const;
 
 /** Lança um erro para o formulário quando a chave passou o limite da ação. */

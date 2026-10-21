@@ -16,8 +16,8 @@ export default function PricingPage() {
         eyebrow="Preços"
         title="Simples para quem compete, justo para quem organiza"
         lead="Acompanhar torneios e criar conta não custa nada. O atleta paga apenas a inscrição definida pelo organizador do evento."
-        image="/images/podio.jpg"
-        imageAlt="Atletas no pódio de um torneio, com troféus"
+        image="/images/pavilhao.jpg"
+        imageAlt="Pavilhão durante um torneio de artes marciais, com várias áreas de competição e mesas de organização"
       />
 
       <div className="grid gap-5 lg:grid-cols-2">

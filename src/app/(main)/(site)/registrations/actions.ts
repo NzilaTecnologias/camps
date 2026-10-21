@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { runAction, text, type ActionState } from "@/lib/action-state";
-import { requireUser } from "@/server/auth";
+import { requireUser, requireVerifiedUser } from "@/server/auth";
 import { publicDataChanged } from "@/server/cache-tags";
 import { enforceLimit } from "@/server/limits";
 import { simulatePayment, startPayment, startRegistration, type Started } from "@/server/registrations";
@@ -20,7 +20,7 @@ export async function registerAction(
   formData: FormData,
 ) {
   return runAction(async () => {
-    const user = await requireUser();
+    const user = await requireVerifiedUser();
     await enforceLimit("registration", user.id);
     if (text(formData, "couponCode")) await enforceLimit("coupon", user.id);
     const started = await startRegistration(user.id, {
@@ -43,7 +43,7 @@ export async function registerAction(
 
 export async function payAction(registrationId: string, _state: ActionState, formData: FormData) {
   return runAction(async () => {
-    const user = await requireUser();
+    const user = await requireVerifiedUser();
     await enforceLimit("payment", user.id);
     const started = await startPayment(user.id, registrationId, text(formData, "provider"), text(formData, "mobile"));
     if (started.redirectUrl) redirect(started.redirectUrl);

@@ -6,7 +6,9 @@ import { computePrice } from "@/lib/pricing";
 import { premiumActive } from "@/lib/federation-rules";
 import { findUsableCoupon } from "./coupons";
 import { activeMembership } from "./memberships";
+import { deliverEmail } from "./email";
 import { kv } from "./kv";
+import { registrationConfirmedEmail } from "./notifications";
 import { appUrl, availableProviders, getProvider, providerFor } from "./payments";
 import type { Outcome } from "./payments/types";
 
@@ -113,7 +115,10 @@ export async function startRegistration(userId: string, input: RegistrationInput
     create: { ...data, eventId: division.eventId, divisionId: division.id, athleteId: athlete.id },
   });
 
-  if (isFree) return { registrationId: registration.id };
+  if (isFree) {
+    await deliverEmail(await prisma.$transaction((tx) => registrationConfirmedEmail(tx, registration.id)));
+    return { registrationId: registration.id };
+  }
   return startPayment(userId, registration.id, input.provider, input.mobile);
 }
 
@@ -240,7 +245,7 @@ export async function startPayment(
 /** Grava o desfecho de um pagamento uma única vez e, se foi pago, confirma a inscrição. */
 async function settle(paymentId: string, outcome: Outcome) {
   if (outcome.status === "PENDING") return;
-  await prisma.$transaction(async (tx) => {
+  const emailId = await prisma.$transaction(async (tx) => {
     const { count } = await tx.payment.updateMany({
       where: { id: paymentId, status: "PENDING" },
       data: {
@@ -249,7 +254,7 @@ async function settle(paymentId: string, outcome: Outcome) {
         settledAt: new Date(),
       },
     });
-    if (count === 0 || outcome.status !== "SUCCEEDED") return;
+    if (count === 0 || outcome.status !== "SUCCEEDED") return null;
     const payment = await tx.payment.findUniqueOrThrow({ where: { id: paymentId } });
     await tx.registration.update({ where: { id: payment.registrationId }, data: { status: "PAID" } });
     // Só a primeira confirmação conta: é a partir dela que o atleta entra na taxa da Camps.
@@ -257,7 +262,9 @@ async function settle(paymentId: string, outcome: Outcome) {
       where: { id: payment.registrationId, confirmedAt: null },
       data: { confirmedAt: new Date() },
     });
+    return registrationConfirmedEmail(tx, payment.registrationId, payment);
   });
+  if (emailId) await deliverEmail(emailId);
 }
 
 /**

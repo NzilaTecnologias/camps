@@ -3,7 +3,9 @@ import { UserError } from "@/lib/errors";
 import { membershipValidUntil, premiumActive } from "@/lib/federation-rules";
 import { UTC_OFFSET } from "@/lib/format";
 import { normalizeAngolanMobile } from "@/lib/phone";
+import { deliverEmail } from "./email";
 import { kv } from "./kv";
+import { membershipActiveEmail, membershipRefundedEmail } from "./notifications";
 import { appUrl, availableProviders, getProvider, providerFor } from "./payments";
 import type { Outcome } from "./payments/types";
 
@@ -185,12 +187,12 @@ export async function startMembershipPayment(
 /** Grava o desfecho uma única vez e, se foi pago, ativa a filiação a partir de hoje. */
 async function settleMembershipPayment(paymentId: string, outcome: Outcome) {
   if (outcome.status === "PENDING") return;
-  await prisma.$transaction(async (tx) => {
+  const emailId = await prisma.$transaction(async (tx) => {
     const { count } = await tx.membershipPayment.updateMany({
       where: { id: paymentId, status: "PENDING" },
       data: { status: outcome.status, failureReason: outcome.status === "FAILED" ? outcome.reason : null, settledAt: new Date() },
     });
-    if (count === 0 || outcome.status !== "SUCCEEDED") return;
+    if (count === 0 || outcome.status !== "SUCCEEDED") return null;
     const payment = await tx.membershipPayment.findUniqueOrThrow({
       where: { id: paymentId },
       include: { membership: { include: { plan: true } } },
@@ -200,7 +202,9 @@ async function settleMembershipPayment(paymentId: string, outcome: Outcome) {
       where: { id: payment.membershipId },
       data: { status: "ACTIVE", validFrom: now, validUntil: membershipValidUntil(now, payment.membership.plan.months) },
     });
+    return membershipActiveEmail(tx, payment.membershipId, payment.amountCents);
   });
+  if (emailId) await deliverEmail(emailId);
 }
 
 export async function refreshMembershipPayment(paymentId: string, options: { force?: boolean } = {}) {
@@ -282,16 +286,18 @@ export function listMyMemberships(userId: string) {
 
 async function settleMembershipRefund(refundId: string, outcome: Outcome) {
   if (outcome.status === "PENDING") return;
-  await prisma.$transaction(async (tx) => {
+  const emailId = await prisma.$transaction(async (tx) => {
     const { count } = await tx.membershipRefund.updateMany({
       where: { id: refundId, status: "PENDING" },
       data: { status: outcome.status, failureReason: outcome.status === "FAILED" ? outcome.reason : null, settledAt: new Date() },
     });
-    if (count === 0 || outcome.status !== "SUCCEEDED") return;
+    if (count === 0 || outcome.status !== "SUCCEEDED") return null;
     const refund = await tx.membershipRefund.findUniqueOrThrow({ where: { id: refundId }, include: { payment: true } });
     await tx.membershipPayment.update({ where: { id: refund.paymentId }, data: { status: "REFUNDED" } });
     await tx.membership.update({ where: { id: refund.payment.membershipId }, data: { status: "CANCELLED" } });
+    return membershipRefundedEmail(tx, refund.payment.membershipId, refund.payment.amountCents, refund.manual);
   });
+  if (emailId) await deliverEmail(emailId);
 }
 
 /**

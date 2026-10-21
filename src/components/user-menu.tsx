@@ -16,7 +16,7 @@ export async function UserMenu() {
   if (!user) {
     // Criar conta fica na página de login, para o cabeçalho ter só uma porta de entrada.
     return (
-      <LinkButton href="/login" size="sm">
+      <LinkButton href="/login" size="sm" className="h-9! px-5! text-sm!">
         Iniciar sessão
       </LinkButton>
     );

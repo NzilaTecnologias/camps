@@ -1,0 +1,42 @@
+# Caddy à frente da aplicação: certificado HTTPS automático (Let's Encrypt), compressão e
+# distribuição dos pedidos pelas réplicas do serviço "app".
+{
+	email {$ACME_EMAIL}
+}
+
+# Quem entra por www vai para o domínio principal.
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Pedidos grandes não chegam à aplicação (os formulários da Camps não passam de alguns KB;
+	# os logótipos são endereços, não ficheiros).
+	request_body {
+		max_size 2MB
+	}
+
+	reverse_proxy {
+		# Todas as réplicas do serviço "app" (o DNS do Docker devolve um IP por réplica).
+		dynamic a {
+			name app
+			port 3000
+			refresh 5s
+		}
+		lb_policy least_conn
+		# Se uma réplica falhar (ex.: durante uma atualização), tenta outra.
+		lb_try_duration 10s
+		fail_duration 30s
+		# Envia cada pedaço de HTML assim que a aplicação o produz (streaming do React).
+		flush_interval -1
+		# O X-Forwarded-For que vier do cliente é substituído pelo IP real (os limites por IP dependem
+		# disso). Atrás da Cloudflare, acrescentar "trusted_proxies" com os IPs dela (docs/PRODUCAO.md).
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

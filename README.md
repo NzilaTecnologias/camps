@@ -77,6 +77,19 @@ Um método só aparece ao atleta quando as suas variáveis estão preenchidas. O
 
 Cada provedor é um ficheiro em `src/server/payments/`; trocar a ProxyPay por outro agregador ou pelo GPO direto da EMIS é reescrever `multicaixa-express.ts`.
 
+## Contas e e-mails
+
+- **Registo:** pede a aceitação dos [Termos](/terms) e da [Política de privacidade](/privacy) (data gravada em `User.termsAcceptedAt`) e envia um link para confirmar o e-mail. Até confirmar, a conta entra mas não paga inscrições ou quotas nem cria organizações e eventos, e um aviso no topo permite reenviar o link.
+- **Nova palavra-passe:** "Esqueceu-se da palavra-passe?" no login. O link vale 60 minutos e uma só vez; ao usá-lo, todas as sessões abertas terminam. A resposta é a mesma quer o e-mail exista quer não.
+- **Avisos por e-mail:** inscrição confirmada, inscrição reembolsada, filiação ativa e quota reembolsada.
+- **Limites:** no máximo 5 links por hora para o mesmo e-mail e 30 por IP.
+
+Os e-mails saem pela [Resend](https://resend.com) (`RESEND_API_KEY`, `EMAIL_FROM` com domínio verificado, `EMAIL_REPLY_TO` opcional). Cada e-mail é gravado na tabela `EmailOutbox` antes de sair, e a tarefa de fundo volta a tentar os que falharam (até 6 vezes, de 1 minuto a 12 horas). Os links de acesso não ficam guardados depois de enviados. Sem `RESEND_API_KEY`, em desenvolvimento, nada sai: os e-mails aparecem em `/dev/mailbox`.
+
+Os dados da empresa nos textos legais estão em `src/lib/legal.ts` e **têm de ser preenchidos** antes de abrir ao público; os textos devem ser revistos por um advogado.
+
+Erros do servidor e da tarefa de fundo vão para o Sentry quando `SENTRY_DSN` está preenchido (sem SDK: `src/server/error-report.ts`).
+
 ## Placar e transmissão em direto
 
 Cada evento tem **áreas de luta** (geridas na página do evento, no painel). Cada área tem:
@@ -107,20 +120,30 @@ A página inicial usa fotografias de uso livre do Wikimedia Commons, em `public/
 | `images/jiu-jitsu.jpg` | [USMC-110122-M-9595T-067](https://commons.wikimedia.org/wiki/File:USMC-110122-M-9595T-067.jpg), por Lance Cpl. Andrew D. Thorburn | Domínio público |
 | `images/karate-combate.jpg` | [Karate tournament combat](https://commons.wikimedia.org/wiki/File:Karate_tournament_combat.jpg), por Miguel Angel Omaña Rojas | CC0 |
 | `images/karate-placar.jpg` | [Karate International tournament](https://commons.wikimedia.org/wiki/File:Karate_International_tournament.jpg), por Miguel Angel Omaña Rojas | CC0 |
-| `images/podio.jpg` | [Shirin Sharmin Chaudhury At Karate Tournament Shaheed Suhrawardi Stadium Dhaka 2015-10-23 (PID-0057606)](https://commons.wikimedia.org/wiki/File:Shirin_Sharmin_Chaudhury_At_Karate_Tournament_Shaheed_Suhrawardi_Stadium_Dhaka_2015-10-23_(PID-0057606).jpg), por Press Information Department (Bangladesh) | Domínio público |
 | `images/taekwondo.jpg` | [Img notipGO5DLrPzS](https://commons.wikimedia.org/wiki/File:Img_notipGO5DLrPzS.jpg), por Tomas Peruzzo | CC0 |
 | `images/torneio-infantil.jpg` | [Karate tournament for Kids](https://commons.wikimedia.org/wiki/File:Karate_tournament_for_Kids.jpg), por Samson Ssemakadde | CC0 |
+| `images/combate.jpg` | [MenFight](https://commons.wikimedia.org/wiki/File:MenFight.jpg), por 12019 | CC0 |
+| `images/pavilhao.jpg` | [Ramstein holds youth martial arts tournament 150228-F-EN010-254](https://commons.wikimedia.org/wiki/File:Ramstein_holds_youth_martial_arts_tournament_150228-F-EN010-254.jpg), por Senior Airman Timothy Moore (U.S. Air Force) | Domínio público |
 
 ## Escala e produção
 
-A arquitetura está preparada para 1 milhão de utilizadores: caches partilhadas, tarefa de fundo, limites de pedidos, índices e paginação. Topologia, medições, plano de capacidade e passos de implantação estão em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
+A arquitetura está preparada para 1 milhão de utilizadores: caches partilhadas, tarefa de fundo, limites de pedidos, índices e paginação. Topologia, medições e plano de capacidade estão em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
+
+**Implantação:** [docs/PRODUCAO.md](docs/PRODUCAO.md) é o guia passo a passo. Os ficheiros são:
+
+- `Dockerfile`: imagem com o servidor autónomo do Next e um alvo para as migrações;
+- `deploy/docker-compose.yml`: Caddy com HTTPS automático, réplicas da aplicação, Postgres 17, Redis e cópias de segurança diárias;
+- `deploy/deploy.sh`: atualizações;
+- `.github/workflows/ci.yml`: tipos, lint, testes, build, testes ponta a ponta e imagem Docker em cada push.
+
+Em produção, o servidor recusa-se a arrancar com configuração perigosa ou incompleta (`src/server/env-check.ts`).
 
 ## Comandos
 
 | Comando | O que faz |
 |---|---|
 | `npm test` | Testes unitários (motor de chaves, palavra-passe, pagamentos) |
-| `npm run test:e2e` | Percorre registo, painel, chave, resultados, inscrição e pagamento pelo HTTP (`scripts/e2e.mjs` e `scripts/e2e-extra.mjs`). Precisa do app rodando e grava dados de teste no banco; `npm run db:seed` limpa depois |
+| `npm run test:e2e` | Percorre registo, confirmação de e-mail, nova palavra-passe, painel, chave, resultados, inscrição e pagamento pelo HTTP (`scripts/e2e.mjs`, `scripts/e2e-extra.mjs` e `scripts/e2e-auth.mjs`). Precisa do app rodando sem `RESEND_API_KEY` e grava dados de teste no banco; `npm run db:seed` limpa depois |
 | `node scripts/load-test.mjs <url> [clientes] [segundos]` | Teste de carga simples; com `--pg=<DATABASE_URL>` conta as transações no Postgres |
 | `npx tsx scripts/seed-live.ts [eventos] [áreas]` · `node scripts/load-test-live.mjs <origem> <DATABASE_URL>` | Vários eventos em direto e espectadores a seguir os placares (nunca numa base real) |
 | `npx tsx scripts/seed-scale.ts [utilizadores]` | Dados em massa para testes de carga (nunca numa base real) |

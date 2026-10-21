@@ -17,7 +17,7 @@ type Member = Awaited<ReturnType<typeof listFederationMembers>>[number];
 function RefundForm({ payment }: { payment: Member["payments"][number] }) {
   return (
     <details>
-      <summary className="inline-flex h-8 cursor-pointer list-none items-center rounded-lg border border-line px-3 text-xs font-semibold hover:border-foreground/40">
+      <summary className="inline-flex h-8 cursor-pointer list-none items-center rounded-full border border-line px-3 text-xs font-semibold hover:border-foreground/40">
         Reembolsar
       </summary>
       <div className="mt-3 w-72 rounded-lg border border-line bg-surface-2 p-3 text-left">

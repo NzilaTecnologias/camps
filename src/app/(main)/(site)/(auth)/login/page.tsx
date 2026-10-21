@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Field } from "@/components/field";
@@ -16,6 +17,9 @@ async function LoginForm({ searchParams }: { searchParams: SearchParams }) {
       <ActionForm action={logInAction} submitLabel="Entrar" className="flex flex-col gap-4">
         <Field label="E-mail" name="email" type="email" autoComplete="email" required />
         <Field label="Palavra-passe" name="password" type="password" autoComplete="current-password" required />
+        <Link href="/forgot-password" className="-mt-2 self-end text-xs font-semibold text-primary hover:underline">
+          Esqueceu-se da palavra-passe?
+        </Link>
         {typeof next === "string" && <input type="hidden" name="next" value={next} />}
       </ActionForm>
 

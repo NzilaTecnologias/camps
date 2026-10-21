@@ -3,13 +3,13 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { runAction, text, type ActionState } from "@/lib/action-state";
-import { requireUser } from "@/server/auth";
+import { requireUser, requireVerifiedUser } from "@/server/auth";
 import { enforceLimit } from "@/server/limits";
 import { simulateMembershipPayment, startMembership, startMembershipPayment } from "@/server/memberships";
 
 export async function joinFederationAction(slug: string, _state: ActionState, formData: FormData) {
   return runAction(async () => {
-    const user = await requireUser();
+    const user = await requireVerifiedUser();
     await enforceLimit("payment", user.id);
     const started = await startMembership(user.id, slug, {
       planId: text(formData, "planId"),
@@ -28,7 +28,7 @@ export async function joinFederationAction(slug: string, _state: ActionState, fo
 
 export async function payMembershipAction(membershipId: string, _state: ActionState, formData: FormData) {
   return runAction(async () => {
-    const user = await requireUser();
+    const user = await requireVerifiedUser();
     await enforceLimit("payment", user.id);
     const started = await startMembershipPayment(user.id, membershipId, text(formData, "provider"), text(formData, "mobile"));
     if (started.redirectUrl) redirect(started.redirectUrl);

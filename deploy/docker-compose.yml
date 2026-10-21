@@ -1,0 +1,145 @@
+# Camps num servidor (VPS) com Docker. Arranque:
+#   cd deploy && cp env.production.example .env && (editar .env) && docker compose up -d --build
+# Guia completo em docs/PRODUCAO.md.
+#
+#   Internet ──443──▶ caddy (HTTPS automático) ──▶ app ×N ──▶ db (Postgres) + redis
+#                                                  backup ──▶ ./backups (pg_dump diário)
+#
+# Com Postgres gerido (fora deste servidor): preencher DATABASE_URL no .env e tirar "local-db"
+# de COMPOSE_PROFILES; os serviços db e backup deixam de arrancar.
+
+name: camps
+
+x-app-env: &app-env
+  # Tudo o resto vem do .env (env_file). Estes dois apontam para os serviços deste ficheiro,
+  # a não ser que o .env traga outros.
+  DATABASE_URL: ${DATABASE_URL:-postgres://camps:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@db:5432/camps}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+
+services:
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?defina DOMAIN no .env}
+      ACME_EMAIL: ${ACME_EMAIL:?defina ACME_EMAIL no .env (avisos do certificado HTTPS)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+  app:
+    build:
+      context: ..
+      target: runner
+      args:
+        NEXT_PUBLIC_MAP_TILE_URL: ${NEXT_PUBLIC_MAP_TILE_URL:-}
+        NEXT_PUBLIC_MAP_ATTRIBUTION: ${NEXT_PUBLIC_MAP_ATTRIBUTION:-}
+        NEXT_DEPLOYMENT_ID: ${DEPLOYMENT_ID:-}
+    image: camps-app:${DEPLOYMENT_ID:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment: *app-env
+    deploy:
+      # Um processo por vCPU. Todos correm a tarefa de fundo; o bloqueio no Redis deixa só um trabalhar.
+      replicas: ${APP_REPLICAS:-2}
+      resources:
+        limits:
+          memory: ${APP_MEMORY:-1g}
+    # Tempo para acabar os pedidos em curso e os e-mails pendentes (after) antes de parar.
+    stop_grace_period: 30s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  migrate:
+    build:
+      context: ..
+      target: migrate
+    image: camps-migrate:${DEPLOYMENT_ID:-latest}
+    restart: "no"
+    environment: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+    logging: *logging
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # Só caches, limites e bloqueios, todos com prazo: não precisa de ser gravado em disco.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "${REDIS_MEMORY:-256mb}", "--maxmemory-policy", "volatile-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging: *logging
+
+  db:
+    image: postgres:17
+    profiles: ["local-db"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: camps
+      POSTGRES_DB: camps
+      # Vazio, o próprio Postgres recusa-se a arrancar.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${PG_SHARED_BUFFERS:-512MB}
+      - -c
+      - max_connections=${PG_MAX_CONNECTIONS:-100}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U camps -d camps"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  backup:
+    image: postgres:17
+    profiles: ["local-db"]
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: camps
+      PGDATABASE: camps
+      PGPASSWORD: ${POSTGRES_PASSWORD:-}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_HOUR: ${BACKUP_HOUR:-3}
+      TZ: Africa/Luanda
+    entrypoint: ["sh", "/backup.sh"]
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - ./backups:/backups
+    # Só depois das migrações: a cópia feita ao arrancar já tem as tabelas todas.
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    logging: *logging
+
+volumes:
+  pg-data:
+  caddy-data:
+  caddy-config:

@@ -29,6 +29,19 @@ class Browser {
     const res = await this.request(path);
     return { status: res.status, location: res.headers.get("location"), html: await res.text() };
   }
+  /** Cria conta (aceitando os termos) e confirma o e-mail pela caixa de correio de desenvolvimento. */
+  async signup(path, fields) {
+    const res = await this.submit(path, "password", { terms: "on", ...fields });
+    if (res.status === 303) await this.confirmEmail(fields.email);
+    return res;
+  }
+  /** Abre o link de confirmação mais recente enviado para `email` (precisa do servidor sem RESEND_API_KEY). */
+  async confirmEmail(email) {
+    const { html } = await this.get(`/dev/mailbox?to=${encodeURIComponent(email)}`);
+    const link = html.match(/href="[^"]*(\/verify-email\?token=[^"]+)"/)?.[1];
+    if (!link) throw new Error(`não chegou o e-mail de confirmação para ${email}`);
+    await this.submit(decode(link), "token");
+  }
   /** Envia o formulário da página `path` que contém `marker`, com os campos dados. */
   async submit(path, marker, fields = {}, nth = 0) {
     const { html } = await this.get(path);
@@ -55,12 +68,12 @@ let r = await alice.get("/manage");
 check("painel sem login redireciona para /login e guarda o destino", r.status === 307 && r.location?.endsWith("/login?next=%2Fmanage"), `${r.status} ${r.location}`);
 
 // Cadastro
-r = await alice.submit("/signup", "password", { name: "A", email: "x", password: "curta" });
+r = await alice.signup("/signup", { name: "A", email: "x", password: "curta" });
 check("cadastro inválido mostra erro", r.html.includes("Informe seu nome"), strip(r.html).slice(0, 200));
-r = await alice.submit("/signup", "password", { name: "Alice Teste", email: `alice${stamp}@teste.local`, password: "senha-da-alice" });
+r = await alice.signup("/signup", { name: "Alice Teste", email: `alice${stamp}@teste.local`, password: "senha-da-alice" });
 check("cadastro redireciona para a página inicial", r.status === 303 && new URL(r.location, BASE).pathname === "/", `${r.status} ${r.location}`);
 check("cadastro grava cookie de sessão", alice.cookies.has("camps_session"));
-r = await bob.submit("/signup", "password", { name: "Outra", email: `alice${stamp}@teste.local`, password: "outra-senha-1" });
+r = await bob.signup("/signup", { name: "Outra", email: `alice${stamp}@teste.local`, password: "outra-senha-1" });
 check("e-mail repetido é recusado", r.html.includes("existe uma conta com este e-mail"));
 
 // Organização e evento
@@ -160,7 +173,7 @@ check("lista de eventos abre o mapa", /Esconder mapa/.test(strip(r.html)) && r.h
 
 
 // Isolamento entre organizadores
-await bob.submit("/signup", "password", { name: "Bob Teste", email: `bob${stamp}@teste.local`, password: "senha-do-bob-1" });
+await bob.signup("/signup", { name: "Bob Teste", email: `bob${stamp}@teste.local`, password: "senha-do-bob-1" });
 r = await bob.get(eventPath);
 check("outro usuário não vê o evento no painel", !strip(r.html).includes(`Open Teste ${stamp}`), strip(r.html).slice(0, 300));
 r = await bob.get(divisionPath);
@@ -183,7 +196,7 @@ const carol = new Browser();
 r = await carol.get(`${paidDivision}/register`);
 const loginUrl = r.location ? new URL(r.location, BASE) : null;
 check("inscrição sem conta manda para o login com o destino", r.status === 307 && loginUrl?.searchParams.get("next") === `${paidDivision}/register`, `${r.status} ${r.location}`);
-r = await carol.submit(`/signup?next=${encodeURIComponent(`${paidDivision}/register`)}`, "password", { name: "Carol Teste", email: `carol${stamp}@teste.local`, password: "senha-da-carol" });
+r = await carol.signup(`/signup?next=${encodeURIComponent(`${paidDivision}/register`)}`, { name: "Carol Teste", email: `carol${stamp}@teste.local`, password: "senha-da-carol" });
 check("depois de criar conta volta para a inscrição", r.status === 303 && new URL(r.location, BASE).pathname === `${paidDivision}/register`, `${r.status} ${r.location}`);
 
 r = await carol.get(`${paidDivision}/register`);
@@ -213,6 +226,8 @@ await carol.submit(registrationPath, 'name="provider"', { provider: "SIMULATOR",
 await carol.submit(registrationPath, "Simular aprovado");
 r = await carol.get(registrationPath);
 check("pagamento aprovado confirma a inscrição", /Inscrição confirmada · 5\s000,00\sKz pagos/.test(strip(r.html)), strip(r.html).slice(0, 300));
+r = await carol.get(`/dev/mailbox?to=${encodeURIComponent(`carol${stamp}@teste.local`)}`);
+check("e-mail de inscrição confirmada chega com o link", r.html.includes("Inscrição confirmada:") && r.html.includes(registrationPath));
 r = await carol.get(paidDivision);
 check("atleta pago aparece na lista pública", /Inscritos \( ?1 ?\)/.test(strip(r.html)) && /Kiluanji Neto/.test(strip(r.html)), strip(r.html).slice(0, 300));
 
@@ -233,7 +248,7 @@ r = await alice.get(managedPaidDivision);
 check("organizador vê o atleta inscrito no painel", /Kiluanji Neto/.test(strip(r.html)));
 
 const dave = new Browser();
-r = await dave.submit("/signup?next=//malicioso.example", "password", { name: "Dave Teste", email: `dave${stamp}@teste.local`, password: "senha-do-dave" });
+r = await dave.signup("/signup?next=//malicioso.example", { name: "Dave Teste", email: `dave${stamp}@teste.local`, password: "senha-do-dave" });
 check("destino externo no login é ignorado", r.status === 303 && new URL(r.location, BASE).href === new URL("/", BASE).href, `${r.status} ${r.location}`);
 r = await new Browser().submit("/login", "password", { email: `dave${stamp}@teste.local`, password: "senha-do-dave", next: "/\t/malicioso.example" });
 check("destino com tab no login é ignorado", r.status === 303 && new URL(r.location, BASE).href === new URL("/", BASE).href, `${r.status} ${r.location}`);
@@ -417,6 +432,8 @@ r = await alice.get(paymentsPath);
 check("pagamento reembolsado aparece com o motivo", /Reembolsado/.test(strip(r.html)) && /Lesão no treino/.test(strip(r.html)), strip(r.html).slice(0, 400));
 r = await carol.get(discountedPath);
 check("atleta vê a inscrição cancelada e reembolsada", /cancelada e reembolsada/.test(strip(r.html)) && /3\s600,00\sKz devolvidos/.test(strip(r.html)), strip(r.html).slice(0, 300));
+r = await carol.get(`/dev/mailbox?to=${encodeURIComponent(`carol${stamp}@teste.local`)}`);
+check("e-mail de reembolso chega ao atleta", r.html.includes("Reembolso da inscrição:") && /3\s600,00\sKz/.test(strip(r.html)));
 r = await carol.get(paidDivision);
 check("inscrição reembolsada sai da lista pública", !/Mateus Kiala/.test(strip(r.html)));
 

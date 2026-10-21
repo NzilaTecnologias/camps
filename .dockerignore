@@ -1,0 +1,15 @@
+.git
+.github
+.next
+node_modules
+src/generated
+coverage
+*.tsbuildinfo
+next-env.d.ts
+# Segredos: as variáveis entram no contentor pelo docker compose, nunca pela imagem.
+.env*
+deploy/.env
+deploy/backups
+.vscode
+.claude
+npm-debug.log*

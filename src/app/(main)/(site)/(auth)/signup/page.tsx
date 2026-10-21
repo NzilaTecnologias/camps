@@ -21,6 +21,20 @@ async function SignupForm({ searchParams }: { searchParams: SearchParams }) {
         minLength={8}
         required
       />
+      <label className="flex items-start gap-2 text-sm text-muted">
+        <input type="checkbox" name="terms" required className="mt-0.5 h-4 w-4 accent-[var(--primary)]" />
+        <span>
+          Li e aceito os{" "}
+          <Link href="/terms" target="_blank" className="font-semibold text-primary hover:underline">
+            Termos de utilização
+          </Link>{" "}
+          e a{" "}
+          <Link href="/privacy" target="_blank" className="font-semibold text-primary hover:underline">
+            Política de privacidade
+          </Link>
+          .
+        </span>
+      </label>
       {typeof next === "string" && <input type="hidden" name="next" value={next} />}
     </ActionForm>
   );

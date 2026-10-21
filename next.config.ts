@@ -23,6 +23,9 @@ const nextConfig: NextConfig = {
     // Página do evento, chaves e transmissões, que mudam durante a prova.
     live: { stale: 30, revalidate: 5, expire: 30 },
   },
+  // A build produz .next/standalone com um server.js e só os ficheiros necessários: é o que vai
+  // na imagem Docker (Dockerfile). A versão de cada implantação vem de NEXT_DEPLOYMENT_ID na build.
+  output: "standalone",
   poweredByHeader: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

@@ -1,0 +1,79 @@
+# Em cada push e pull request: tipos, lint, testes unitários, build de produção, testes ponta a
+# ponta contra um Postgres real e construção da imagem Docker.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: camps
+          POSTGRES_PASSWORD: camps
+          POSTGRES_DB: camps
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U camps" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://camps:camps@localhost:5432/camps
+      APP_URL: http://localhost:3000
+      PAYMENTS_SIMULATOR: "1"
+      JOBS_INTERVAL_SECONDS: "0"
+      PLATFORM_ADMIN_EMAILS: admin@camps.local
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx prisma migrate deploy
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+      # Os testes ponta a ponta usam o simulador de pagamentos e a caixa de correio /dev/mailbox,
+      # que só existem em desenvolvimento: correm contra o `next dev`.
+      - run: npx prisma db seed
+      - name: Testes ponta a ponta
+        run: |
+          npm run dev > dev.log 2>&1 &
+          for i in $(seq 1 90); do curl -fs http://localhost:3000/api/health && break; sleep 2; done
+          npm run test:e2e
+      - if: failure()
+        run: tail -200 dev.log
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Imagem da aplicação
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runner
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Imagem das migrações
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: migrate
+          push: false
+          cache-from: type=gha

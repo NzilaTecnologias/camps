@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 import { NavMenu } from "@/components/nav-menu";
 import { UserMenu } from "@/components/user-menu";
+import { VerifyEmailBanner } from "@/components/verify-email-banner";
 
 const FOOTER_LINKS = [
   {
@@ -35,6 +36,8 @@ const FOOTER_LINKS = [
       { href: "/pricing", label: "Preços" },
       { href: "/support", label: "Apoiar" },
       { href: "/sponsors", label: "Patrocínios" },
+      { href: "/terms", label: "Termos de utilização" },
+      { href: "/privacy", label: "Política de privacidade" },
     ],
   },
 ];
@@ -72,6 +75,9 @@ export default function MainLayout({ children }: { children: ReactNode }) {
           </div>
         </nav>
       </header>
+      <Suspense fallback={null}>
+        <VerifyEmailBanner />
+      </Suspense>
       <main className="flex-1">{children}</main>
       <footer className="border-t border-white/10 bg-ink text-white">
         <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-12 sm:grid-cols-2 lg:grid-cols-[1.5fr_repeat(4,1fr)]">

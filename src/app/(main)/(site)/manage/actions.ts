@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { runAction, text, type ActionState } from "@/lib/action-state";
-import { requireUser } from "@/server/auth";
+import { requireUser, requireVerifiedUser } from "@/server/auth";
 import { publicDataChanged } from "@/server/cache-tags";
 import {
   addAthlete,
@@ -17,7 +17,7 @@ import {
 
 export async function createOrganizerAction(_state: ActionState, formData: FormData) {
   return runAction(async () => {
-    const user = await requireUser();
+    const user = await requireVerifiedUser();
     await createOrganizer(user.id, text(formData, "name"));
     refresh();
   });
@@ -25,7 +25,7 @@ export async function createOrganizerAction(_state: ActionState, formData: FormD
 
 export async function createEventAction(_state: ActionState, formData: FormData) {
   return runAction(async () => {
-    const user = await requireUser();
+    const user = await requireVerifiedUser();
     const event = await createEvent(user.id, {
       organizerId: text(formData, "organizerId"),
       name: text(formData, "name"),

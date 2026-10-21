@@ -135,6 +135,8 @@ Os números da aplicação são estimativas a partir das medições acima. Antes
 
 ## Pôr em produção
 
+O guia passo a passo, com Docker, está em [PRODUCAO.md](PRODUCAO.md). Esta secção resume o que vale para qualquer infraestrutura.
+
 1. **Base de dados:** `npx prisma migrate deploy`. A migração `20261016150000_scale` cria a extensão `pg_trgm`; o utilizador da base precisa de permissão para isso, ou um administrador cria-a antes.
 2. **Variáveis de ambiente** (ver `.env.example`):
 
@@ -148,6 +150,9 @@ Os números da aplicação são estimativas a partir das medições acima. Antes
    | `NEXT_PUBLIC_MAP_TILE_URL`, `NEXT_PUBLIC_MAP_ATTRIBUTION` | Fornecedor de mosaicos contratado (MapTiler, Stadia…). Os do OpenStreetMap não permitem tráfego intenso. |
    | `APP_URL` | Endereço público em `https://` |
    | `PAYMENTS_SIMULATOR` | Vazio. O simulador nunca funciona em produção, mesmo que fique ligado. |
+   | `RESEND_API_KEY`, `EMAIL_FROM` | **Obrigatórios.** Chave da Resend e remetente de um domínio verificado lá (registos SPF e DKIM no DNS). Sem eles, os e-mails de confirmação e de nova palavra-passe ficam na fila e ninguém consegue confirmar a conta. |
+   | `EMAIL_REPLY_TO` | Opcional: endereço que recebe as respostas aos e-mails. |
+   | `SENTRY_DSN`, `SENTRY_ENVIRONMENT` | DSN do projeto no Sentry, para receber os erros do servidor e da tarefa de fundo. |
 
 3. **Proxy ou balanceador:** tem de escrever `X-Forwarded-For` e apagar o que vier do cliente, porque os limites por IP dependem disso. Deve encaminhar `/api/health`.
 4. **CDN:**

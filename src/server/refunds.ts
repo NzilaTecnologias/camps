@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db";
 import { UserError } from "@/lib/errors";
 import { appUrl, providerFor } from "./payments";
 import type { Outcome } from "./payments/types";
+import { deliverEmail } from "./email";
+import { registrationRefundedEmail } from "./notifications";
 import { memberOf } from "./manage";
 
 // Reembolsos são sempre totais (a OPG da ProxyPay não faz parciais) e só o organizador os pede.
@@ -10,7 +12,7 @@ import { memberOf } from "./manage";
 /** Grava o desfecho de uma devolução uma única vez. */
 async function settleRefund(refundId: string, outcome: Outcome) {
   if (outcome.status === "PENDING") return;
-  await prisma.$transaction(async (tx) => {
+  const emailId = await prisma.$transaction(async (tx) => {
     const { count } = await tx.refund.updateMany({
       where: { id: refundId, status: "PENDING" },
       data: {
@@ -19,11 +21,13 @@ async function settleRefund(refundId: string, outcome: Outcome) {
         settledAt: new Date(),
       },
     });
-    if (count === 0 || outcome.status !== "SUCCEEDED") return;
+    if (count === 0 || outcome.status !== "SUCCEEDED") return null;
     const refund = await tx.refund.findUniqueOrThrow({ where: { id: refundId }, include: { payment: true } });
     await tx.payment.update({ where: { id: refund.paymentId }, data: { status: "REFUNDED" } });
     await tx.registration.update({ where: { id: refund.payment.registrationId }, data: { status: "CANCELLED" } });
+    return registrationRefundedEmail(tx, refund.payment.registrationId, refund.payment.amountCents, refund.manual);
   });
+  if (emailId) await deliverEmail(emailId);
 }
 
 /**

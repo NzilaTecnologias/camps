@@ -26,6 +26,7 @@ async function main() {
   await prisma.academy.deleteMany();
   await prisma.organizerMember.deleteMany();
   await prisma.organizer.deleteMany();
+  await prisma.emailOutbox.deleteMany();
   await prisma.user.deleteMany();
 
   const owner = await prisma.user.create({
@@ -34,12 +35,20 @@ async function main() {
       email: "organizador@camps.local",
       name: "Organizador Demo",
       passwordHash: await hashPassword("camps-demo"),
+      emailVerifiedAt: new Date(),
+      termsAcceptedAt: new Date(),
     },
   });
 
   // Administrador da Camps de demonstração: vê a fila de repasses (PLATFORM_ADMIN_EMAILS no .env).
   await prisma.user.create({
-    data: { email: "admin@camps.local", name: "Admin Camps", passwordHash: await hashPassword("camps-admin") },
+    data: {
+      email: "admin@camps.local",
+      name: "Admin Camps",
+      passwordHash: await hashPassword("camps-admin"),
+      emailVerifiedAt: new Date(),
+      termsAcceptedAt: new Date(),
+    },
   });
 
   const organizer = await prisma.organizer.create({

@@ -1,0 +1,4 @@
+# Ficheiros que correm em Linux (contentores) têm de manter as quebras de linha LF.
+*.sh text eol=lf
+deploy/Caddyfile text eol=lf
+Dockerfile text eol=lf

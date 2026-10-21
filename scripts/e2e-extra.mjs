@@ -40,6 +40,19 @@ class Browser {
     for (const [name, value] of Object.entries(fields)) body.append(name, value);
     return body;
   }
+  /** Cria conta (aceitando os termos) e confirma o e-mail pela caixa de correio de desenvolvimento. */
+  async signup(path, fields) {
+    const res = await this.submit(path, "password", { terms: "on", ...fields });
+    if (res.status === 303) await this.confirmEmail(fields.email);
+    return res;
+  }
+  /** Abre o link de confirmação mais recente enviado para `email` (precisa do servidor sem RESEND_API_KEY). */
+  async confirmEmail(email) {
+    const { html } = await this.get(`/dev/mailbox?to=${encodeURIComponent(email)}`);
+    const link = html.match(/href="[^"]*(\/verify-email\?token=[^"]+)"/)?.[1];
+    if (!link) throw new Error(`não chegou o e-mail de confirmação para ${email}`);
+    await this.submit(decode(link), "token");
+  }
   async submit(path, marker, fields = {}, nth = 0) {
     const { html } = await this.get(path);
     const res = await this.request(path, { method: "POST", body: this.formData(html, marker, fields, nth) });
@@ -55,9 +68,9 @@ class Browser {
 
 const stamp = Date.now();
 const alice = new Browser(), bob = new Browser(), carol = new Browser(), anon = new Browser();
-await alice.submit("/signup", "password", { name: "Alice X", email: `ax${stamp}@t.local`, password: "senha-da-alice" });
-await bob.submit("/signup", "password", { name: "Bob X", email: `bx${stamp}@t.local`, password: "senha-do-bob-1" });
-await carol.submit("/signup", "password", { name: "Carol X", email: `cx${stamp}@t.local`, password: "senha-da-carol" });
+await alice.signup("/signup", { name: "Alice X", email: `ax${stamp}@t.local`, password: "senha-da-alice" });
+await bob.signup("/signup", { name: "Bob X", email: `bx${stamp}@t.local`, password: "senha-do-bob-1" });
+await carol.signup("/signup", { name: "Carol X", email: `cx${stamp}@t.local`, password: "senha-da-carol" });
 await alice.submit("/manage", 'name="name"', { name: `Liga X ${stamp}` });
 const organizerId = (await alice.get("/manage/events/new")).html.match(/<option value="([^"]+)"/)?.[1];
 let r = await alice.submit("/manage/events/new", 'name="date"', {
@@ -300,6 +313,8 @@ check("filiação criada leva à página dela", /^\/memberships\/\w+$/.test(memb
 await carol.submit(membershipPath, "Simular aprovado");
 r = await carol.get(membershipPath);
 check("quota paga deixa a filiação em dia", /Filiação em dia até/.test(strip(r.html)), strip(r.html).slice(0, 300));
+r = await carol.get(`/dev/mailbox?to=${encodeURIComponent(`cx${stamp}@t.local`)}`);
+check("e-mail de filiação ativa chega", r.html.includes(`Filiação ativa: Fed X ${stamp}`) && r.html.includes(membershipPath));
 r = await carol.get("/registrations");
 check("as minhas inscrições lista a filiação", strip(r.html).includes(`Fed X ${stamp}`));
 r = await carol.get(reg2);
@@ -328,6 +343,8 @@ r = await alice.get(M);
 check("quota reembolsada pelo provedor fica marcada com o motivo", /Reembolsada/.test(strip(r.html)) && /Devolvido pelo provedor · Lesão antes da época/.test(strip(r.html)), strip(r.html).slice(0, 500));
 r = await carol.get(membershipPath);
 check("atleta vê a filiação cancelada e reembolsada", /Filiação cancelada e reembolsada/.test(strip(r.html)) && /3\s000,00\sKz devolvidos/.test(strip(r.html)), strip(r.html).slice(0, 300));
+r = await carol.get(`/dev/mailbox?to=${encodeURIComponent(`cx${stamp}@t.local`)}`);
+check("e-mail de reembolso da quota chega", r.html.includes(`Reembolso da quota: Fed X ${stamp}`));
 r = await alice.get(`${F}/payouts`);
 check("reembolso depois do repasse deixa a federação em dívida", /Reembolsado 3\s000,00\sKz/.test(strip(r.html)) && /Em dívida à Camps 3\s000,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 500));
 r = await carol.submit(reg2, 'name="athleteId"', { ...fedAthlete, athleteId: fedAthleteId });

@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import Image from "next/image";
+import { ParallaxImage } from "@/components/parallax-image";
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 import { EventCard } from "@/components/event-card";
@@ -497,15 +498,9 @@ export default function Home() {
 
       {/* Faixa do pódio */}
       <div className="relative isolate mb-24 overflow-hidden">
-        <Image
-          src="/images/podio.jpg"
-          alt="Atletas no pódio de um torneio de karaté, com troféus"
-          fill
-          sizes="100vw"
-          className="-z-10 object-cover object-[center_30%]"
-        />
+        <ParallaxImage src="/images/combate.jpg" alt="Dois lutadores em combate num octógono, com o árbitro atrás" speed={0.45} />
         <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-r from-black/90 via-black/70 to-black/30" />
-        <Section className="py-24 text-white">
+        <Section className="py-32 text-white sm:py-40">
           <Reveal>
             <Eyebrow>Resultados</Eyebrow>
             <p className="max-w-2xl font-display text-5xl font-bold uppercase leading-[0.95] tracking-tight sm:text-6xl">
