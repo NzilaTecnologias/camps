@@ -241,7 +241,7 @@ check("avisos não se repetem na volta seguinte", countOf(box, `Lembrete: Judo F
 
 // ---------------------------------------------------------------- Faturas da taxa
 const admin = new Browser();
-await admin.submit("/login", "password", { email: "admin@camps.local", password: "camps-admin" });
+await admin.submit("/admin/login", "password", { email: "admin@camps.local", password: "camps-admin" });
 const billingPath = `${judo.eventPath}/billing`;
 r = await org.submit(billingPath, 'name="billingNif"', { billingName: "Clube Feat Lda", billingNif: "123", billingAddress: "Rua 1, Luanda" });
 check("NIF inválido é recusado", r.html.includes("NIF inválido"));
@@ -272,8 +272,11 @@ const stranger = new Browser();
 await stranger.signup("/signup", { name: "Estranho", email: `estranho${stamp}@teste.local`, password: "senha-estranha-1" });
 r = await stranger.get(invoicePath);
 check("fatura não abre para quem não é da organização", !strip(r.html).includes("Clube Feat Lda"));
+// A equipa vê as faturas na administração; a página do site é só do cliente.
+r = await admin.get(`/admin${invoicePath}`);
+check("administrador abre a fatura na administração", strip(r.html).includes("Clube Feat Lda"));
 r = await admin.get(invoicePath);
-check("administrador abre a fatura", strip(r.html).includes("Clube Feat Lda"));
+check("a sessão de administração não abre a página do cliente", !strip(r.html).includes("Clube Feat Lda"));
 r = await admin.get("/admin/payouts");
 r = await admin.submit("/admin/payouts", "Faturar a taxa agora", {}, feeForm(r.html));
 check("sem atletas novos não sai outra fatura", r.html.includes("Não há atletas confirmados por faturar"));

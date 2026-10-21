@@ -2,7 +2,8 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { UserError } from "@/lib/errors";
 import { computeStatement, normalizeAngolanIban, type Statement } from "@/lib/statement";
-import { isPlatformAdmin } from "./billing-config";
+import { can } from "@/lib/admin-permissions";
+import { audit, type Staff } from "./admin/session";
 import { billingDetails, invoiceEventFee, listEventInvoices, type BillingDetailsInput } from "./invoicing";
 import { memberOf } from "./manage";
 
@@ -101,19 +102,20 @@ export async function updatePayoutDetails(userId: string, organizerId: string, h
   await prisma.organizer.update({ where: { id: organizerId }, data: { payoutHolder: name, payoutIban: normalized } });
 }
 
-function requireAdmin(email: string) {
-  if (!isPlatformAdmin(email)) throw new UserError("Só os administradores da Camps podem fazer isto");
+/** Repasses e faturas só para a equipa com a permissão de finanças (área de administração). */
+function requireFinance(staff: Staff) {
+  if (!can(staff.role, "finance")) throw new UserError("O seu papel na equipa não permite fazer isto");
 }
 
 /** Fila de repasses: eventos com inscrições confirmadas, dinheiro cobrado ou repasses feitos. */
-export async function listPayoutQueue(adminEmail: string) {
-  requireAdmin(adminEmail);
+export async function listPayoutQueue(staff: Staff) {
+  requireFinance(staff);
   return statements(Prisma.sql`(p.collected > 0 OR a.athletes > 0 OR po."paidOut" > 0)`);
 }
 
 /** Regista uma transferência feita para o organizador. Não pode passar do saldo em dívida. */
-export async function recordPayout(adminEmail: string, eventId: string, amount: string, reference: string) {
-  requireAdmin(adminEmail);
+export async function recordPayout(staff: Staff, eventId: string, amount: string, reference: string) {
+  requireFinance(staff);
   const [statement] = await statements(Prisma.sql`e.id = ${eventId}`, 1);
   if (!statement) throw new UserError("Evento não encontrado");
   const amountCents = Math.round(Number(amount.replace(/\s/g, "").replace(",", ".")) * 100);
@@ -122,15 +124,18 @@ export async function recordPayout(adminEmail: string, eventId: string, amount: 
   const ref = reference.trim();
   if (ref.length < 3 || ref.length > 80) throw new UserError("Indique a referência da transferência");
   if (!statement.organizer.payoutIban) throw new UserError("O organizador ainda não indicou o IBAN");
-  await prisma.payout.create({ data: { eventId, amountCents, reference: ref, recordedBy: adminEmail } });
+  await prisma.payout.create({ data: { eventId, amountCents, reference: ref, recordedBy: staff.email } });
+  await audit(staff, "payout.record", { type: "event", id: eventId }, { amountCents, reference: ref });
   // A taxa dos atletas confirmados até agora sai faturada com o repasse.
   await invoiceEventFee(eventId);
 }
 
 /** O administrador fatura a taxa sem repasse (ex.: evento só com inscrições pagas em mão). */
-export async function invoiceEventFeeNow(adminEmail: string, eventId: string): Promise<boolean> {
-  requireAdmin(adminEmail);
-  return (await invoiceEventFee(eventId)) !== null;
+export async function invoiceEventFeeNow(staff: Staff, eventId: string): Promise<boolean> {
+  requireFinance(staff);
+  const invoiceId = await invoiceEventFee(eventId);
+  if (invoiceId) await audit(staff, "invoice.fee", { type: "invoice", id: invoiceId }, { eventId });
+  return invoiceId !== null;
 }
 
 /** Nome, NIF e morada da organização para as faturas da taxa. */

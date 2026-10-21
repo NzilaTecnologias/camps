@@ -147,7 +147,7 @@ check("outro utilizador não muda a conta da organização", r.html.includes("Or
 r = await alice.get("/admin/payouts");
 check("organizador sem permissão não vê os repasses", r.status === 404 || !strip(r.html).includes("Repasses aos organizadores"));
 const admin = new Browser();
-await admin.submit("/login", "password", { email: "admin@camps.local", password: "camps-admin" });
+await admin.submit("/admin/login", "password", { email: "admin@camps.local", password: "camps-admin" });
 r = await admin.get("/admin/payouts");
 check("administrador vê o evento na fila de repasses", strip(r.html).includes(`Torneio X ${stamp}`) && /Liga X Lda/.test(strip(r.html)), strip(r.html).slice(0, 300));
 // Formulário de repasse da linha deste evento (o primeiro que aparece depois do nome dele na fila).

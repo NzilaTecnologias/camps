@@ -82,17 +82,22 @@ enum MatchSlot {
 }
 
 model User {
-  id              String    @id @default(cuid())
-  email           String    @unique
+  id              String     @id @default(cuid())
+  email           String     @unique
   passwordHash    String
   name            String
-  createdAt       DateTime  @default(now())
+  createdAt       DateTime   @default(now())
   /// Quando o utilizador abriu o link de confirmação enviado para o e-mail.
   emailVerifiedAt DateTime?
   /// Quando aceitou os Termos de utilização e a Política de privacidade (no registo).
   termsAcceptedAt DateTime?
   /// Conta eliminada a pedido do titular: os dados pessoais foram apagados e a conta não entra mais.
   deletedAt       DateTime?
+  /// Conta suspensa pela equipa da Camps: não entra no site nem na administração.
+  suspendedAt     DateTime?
+  suspendedReason String?
+  /// Papel na equipa que administra a plataforma (área /admin). Nulo = utilizador normal.
+  staffRole       StaffRole?
 
   // Uma conta pode gerenciar vários perfis (ex.: pai inscrevendo os filhos).
   athletes          AthleteProfile[]
@@ -103,6 +108,52 @@ model User {
   federations       FederationMember[]
   membershipRefunds MembershipRefund[]
   authTokens        AuthToken[]
+  adminSessions     AdminSession[]
+}
+
+/// Papéis da equipa da Camps na área de administração (src/server/admin/access.ts).
+enum StaffRole {
+  /// Tudo, incluindo gerir a equipa e ver o registo de atividade.
+  ADMIN
+  /// Pagamentos, repasses, faturas e planos das federações.
+  FINANCE
+  /// Utilizadores, organizações, eventos e e-mails.
+  SUPPORT
+}
+
+/// Sessão da área de administração: separada da sessão do site, mais curta e só válida em /admin.
+model AdminSession {
+  id        String   @id @default(cuid())
+  /// SHA-256 do token do cookie; o token em si nunca é gravado.
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Tudo o que a equipa faz na administração (e as entradas falhadas), para auditoria.
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  /// Quem fez; nulo numa entrada falhada de alguém sem conta.
+  actorId    String?
+  actorEmail String
+  action     String
+  targetType String?
+  targetId   String?
+  details    Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([targetType, targetId])
 }
 
 enum AuthTokenKind {

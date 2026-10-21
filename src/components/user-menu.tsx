@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { logOutAction } from "@/app/(main)/(site)/(auth)/actions";
 import { getCurrentUser } from "@/server/auth";
-import { isPlatformAdmin } from "@/server/billing-config";
 import { Icon, LinkButton } from "./ui";
 
 const itemClass = "block rounded-md px-3 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white";
@@ -43,16 +42,6 @@ export async function UserMenu() {
         <Link href="/manage" className={itemClass}>
           Painel do organizador
         </Link>
-        {isPlatformAdmin(user.email) && (
-          <>
-            <Link href="/admin/payouts" className={itemClass}>
-              Repasses (administração)
-            </Link>
-            <Link href="/admin/federations" className={itemClass}>
-              Federações (administração)
-            </Link>
-          </>
-        )}
         <div className="my-1 border-t border-white/10" />
         <form action={logOutAction}>
           <button type="submit" className={`${itemClass} w-full text-left`}>

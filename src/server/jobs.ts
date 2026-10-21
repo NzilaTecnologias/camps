@@ -130,6 +130,7 @@ export async function runJobs(options: { forceStats?: boolean } = {}): Promise<J
     }
 
     const { count } = await prisma.session.deleteMany({ where: { expiresAt: { lt: new Date() } } });
+    await prisma.adminSession.deleteMany({ where: { expiresAt: { lt: new Date() } } });
     report.sessions = count;
 
     // Avisos aos atletas (lembrete, chave publicada, resultado) e depois a fila de e-mails: os que

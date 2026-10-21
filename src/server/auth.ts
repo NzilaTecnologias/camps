@@ -87,6 +87,7 @@ export async function logIn(input: { email: string; password: string }) {
     throw new UserError("E-mail ou palavra-passe incorretos");
   }
   await clearFailures(email);
+  if (user.suspendedAt) throw new UserError("Esta conta está suspensa. Para saber porquê, contacte o apoio da Camps.");
   await createSession(user.id);
 }
 
@@ -102,12 +103,15 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   if (!token) return null;
   const session = await prisma.session.findUnique({
     where: { tokenHash: hashToken(token) },
-    select: { expiresAt: true, user: { select: { id: true, name: true, email: true, emailVerifiedAt: true } } },
+    select: {
+      expiresAt: true,
+      user: { select: { id: true, name: true, email: true, emailVerifiedAt: true, suspendedAt: true } },
+    },
   });
   await connection();
-  if (!session || session.expiresAt < new Date()) return null;
-  const { emailVerifiedAt, ...user } = session.user;
-  return { ...user, emailVerified: emailVerifiedAt !== null };
+  if (!session || session.expiresAt < new Date() || session.user.suspendedAt) return null;
+  const { id, name, email, emailVerifiedAt } = session.user;
+  return { id, name, email, emailVerified: emailVerifiedAt !== null };
 });
 
 export async function requireUser(): Promise<CurrentUser> {

@@ -28,6 +28,7 @@ async function main() {
   await prisma.organizer.deleteMany();
   await prisma.emailOutbox.deleteMany();
   await prisma.notificationLog.deleteMany();
+  await prisma.adminAuditLog.deleteMany();
   await prisma.invoice.deleteMany();
   await prisma.invoiceSeries.deleteMany();
   await prisma.user.deleteMany();
@@ -43,16 +44,25 @@ async function main() {
     },
   });
 
-  // Administrador da Camps de demonstração: vê a fila de repasses (PLATFORM_ADMIN_EMAILS no .env).
-  await prisma.user.create({
-    data: {
-      email: "admin@camps.local",
-      name: "Admin Camps",
-      passwordHash: await hashPassword("camps-admin"),
-      emailVerifiedAt: new Date(),
-      termsAcceptedAt: new Date(),
-    },
-  });
+  // Equipa da Camps de demonstração, para a área /admin. O administrador vem de PLATFORM_ADMIN_EMAILS
+  // no .env; o financeiro e o suporte têm o papel gravado na conta.
+  const staff = [
+    { email: "admin@camps.local", name: "Admin Camps", password: "camps-admin", staffRole: null },
+    { email: "financeiro@camps.local", name: "Financeiro Camps", password: "camps-financeiro", staffRole: "FINANCE" as const },
+    { email: "suporte@camps.local", name: "Suporte Camps", password: "camps-suporte", staffRole: "SUPPORT" as const },
+  ];
+  for (const member of staff) {
+    await prisma.user.create({
+      data: {
+        email: member.email,
+        name: member.name,
+        passwordHash: await hashPassword(member.password),
+        staffRole: member.staffRole,
+        emailVerifiedAt: new Date(),
+        termsAcceptedAt: new Date(),
+      },
+    });
+  }
 
   const organizer = await prisma.organizer.create({
     data: {

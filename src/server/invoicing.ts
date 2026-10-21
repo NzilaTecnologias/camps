@@ -5,7 +5,6 @@ import { UserError } from "@/lib/errors";
 import { PLAN_LABEL } from "@/lib/federation-rules";
 import { formatMoney } from "@/lib/format";
 import { invoiceNumber, invoiceTotals, line, normalizeNif, type InvoiceLine } from "@/lib/invoice";
-import { isPlatformAdmin } from "./billing-config";
 import { deliverEmail, enqueueEmail } from "./email";
 import { appUrl } from "./payments";
 
@@ -218,11 +217,10 @@ export function invoiceFederationPlan(
 
 // ---------- Leituras ----------
 
-/** A fatura, para o administrador da Camps ou para quem gere a organização ou a federação cliente. */
+/** A fatura, para quem gere a organização ou a federação cliente (a equipa vê-as na administração). */
 export async function getInvoiceFor(user: { id: string; email: string }, invoiceId: string) {
   const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
   if (!invoice) return null;
-  if (isPlatformAdmin(user.email)) return invoice;
   if (invoice.organizerId) {
     const member = await prisma.organizerMember.count({ where: { organizerId: invoice.organizerId, userId: user.id } });
     if (member) return invoice;

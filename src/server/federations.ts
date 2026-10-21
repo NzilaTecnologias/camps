@@ -8,7 +8,9 @@ import { UTC_OFFSET } from "@/lib/format";
 import { slugify } from "@/lib/slug";
 import { SPORT_NAMES } from "@/lib/sports";
 import { computeStatement, normalizeAngolanIban } from "@/lib/statement";
-import { federationPlanPriceCents, isPlatformAdmin } from "./billing-config";
+import { can } from "@/lib/admin-permissions";
+import { audit, type Staff } from "./admin/session";
+import { federationPlanPriceCents } from "./billing-config";
 import { afterIssue, billingDetails, invoiceFederationPlan, type BillingDetailsInput } from "./invoicing";
 
 // Plano Federação: página própria, organizadores e academias filiadas, filiação individual paga,
@@ -259,12 +261,12 @@ export function federationsForOrganizer(organizerId: string) {
 
 // ---------- Administração Camps ----------
 
-function requireAdmin(email: string) {
-  if (!isPlatformAdmin(email)) throw new UserError("Só os administradores da Camps podem fazer isto");
+function requireFinance(staff: Staff) {
+  if (!can(staff.role, "finance")) throw new UserError("O seu papel na equipa não permite fazer isto");
 }
 
-export async function listFederationsAdmin(adminEmail: string) {
-  requireAdmin(adminEmail);
+export async function listFederationsAdmin(staff: Staff) {
+  requireFinance(staff);
   const federations = await prisma.federation.findMany({
     orderBy: { createdAt: "desc" },
     take: 300,
@@ -283,18 +285,19 @@ export async function listFederationsAdmin(adminEmail: string) {
  * de 12 meses do plano ao preço em vigor (quem paga online já recebe a sua sozinho).
  */
 export async function activateFederationPlan(
-  adminEmail: string,
+  staff: Staff,
   federationId: string,
   plan: string,
   untilDay: string,
   invoice = false,
 ) {
-  requireAdmin(adminEmail);
+  requireFinance(staff);
   if (plan !== "BASIC" && plan !== "PREMIUM" && plan !== "NONE") throw new UserError("Escolha o plano");
   const federation = await prisma.federation.findUnique({ where: { id: federationId } });
   if (!federation) throw new UserError("Federação não encontrada");
   if (plan === "NONE") {
     await prisma.federation.update({ where: { id: federationId }, data: { plan: null, planExpiresAt: null } });
+    await audit(staff, "federation.plan.disable", { type: "federation", id: federationId });
     return federation.slug;
   }
   const until = parseDay(untilDay, "a validade do plano");
@@ -311,6 +314,7 @@ export async function activateFederationPlan(
     });
   });
   await afterIssue(issued);
+  await audit(staff, "federation.plan.activate", { type: "federation", id: federationId }, { plan: chosen, until: untilDay, invoice });
   return federation.slug;
 }
 
@@ -320,8 +324,8 @@ export async function updateFederationBilling(userId: string, federationId: stri
   await prisma.federation.update({ where: { id: federation.id }, data: billingDetails(input) });
 }
 
-export async function recordFederationPayout(adminEmail: string, federationId: string, amount: string, reference: string) {
-  requireAdmin(adminEmail);
+export async function recordFederationPayout(staff: Staff, federationId: string, amount: string, reference: string) {
+  requireFinance(staff);
   const federation = await prisma.federation.findUnique({ where: { id: federationId } });
   if (!federation) throw new UserError("Federação não encontrada");
   const { statement } = await getFederationStatement(federationId);
@@ -331,7 +335,8 @@ export async function recordFederationPayout(adminEmail: string, federationId: s
   const ref = reference.trim();
   if (ref.length < 3 || ref.length > 80) throw new UserError("Indique a referência da transferência");
   if (!federation.payoutIban) throw new UserError("A federação ainda não indicou o IBAN");
-  await prisma.payout.create({ data: { federationId, amountCents, reference: ref, recordedBy: adminEmail } });
+  await prisma.payout.create({ data: { federationId, amountCents, reference: ref, recordedBy: staff.email } });
+  await audit(staff, "payout.record", { type: "federation", id: federationId }, { amountCents, reference: ref });
 }
 
 // ---------- Leituras públicas ----------

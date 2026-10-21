@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
@@ -8,19 +7,17 @@ import { Badge, Card, Empty, PageTitle, buttonClass } from "@/components/ui";
 import { PLAN_LABEL, planActive } from "@/lib/federation-rules";
 import { count, formatDate, formatMoney, toDateInput } from "@/lib/format";
 import { formatIban } from "@/lib/statement";
-import { requireUser } from "@/server/auth";
-import { federationPlanPriceCents, isPlatformAdmin } from "@/server/billing-config";
+import { pageStaff } from "@/server/admin/session";
+import { federationPlanPriceCents } from "@/server/billing-config";
 import { listFederationsAdmin } from "@/server/federations";
-import { activateFederationPlanAction, recordFederationPayoutAction } from "../actions";
+import { activateFederationPlanAction, recordFederationPayoutAction } from "../../actions";
 
 const money = (cents: number) => formatMoney(cents, "AOA");
 const inputClass = "h-9 rounded-lg border border-line bg-surface px-2 text-sm";
 
 async function Federations() {
-  const user = await requireUser();
-  // Quem não é administrador não fica a saber que a página existe.
-  if (!isPlatformAdmin(user.email)) notFound();
-  const federations = await listFederationsAdmin(user.email);
+  const staff = await pageStaff("finance");
+  const federations = await listFederationsAdmin(staff);
   await connection();
   const nextYear = new Date();
   nextYear.setFullYear(nextYear.getFullYear() + 1);

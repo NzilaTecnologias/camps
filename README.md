@@ -16,7 +16,7 @@ npm run dev          # http://localhost:3000
 
 `npm run db:up` imprime a URL de conexão. Se a porta for diferente da que está em `.env`, atualize `DATABASE_URL`.
 
-O seed cria a conta `organizador@camps.local` com a palavra-passe `camps-demo`, só para desenvolvimento local. O painel do organizador fica em `/manage`. Cria também o administrador da Camps `admin@camps.local` (palavra-passe `camps-admin`), que vê a fila de repasses em `/admin/payouts`.
+O seed cria a conta `organizador@camps.local` com a palavra-passe `camps-demo`, só para desenvolvimento local. O painel do organizador fica em `/manage`. Cria também a equipa de demonstração da administração (`/admin/login`): `admin@camps.local` / `camps-admin` (administrador), `financeiro@camps.local` / `camps-financeiro` e `suporte@camps.local` / `camps-suporte`.
 
 ## Área do organizador
 
@@ -42,7 +42,7 @@ Um reembolso confirmado passa o pagamento a `REFUNDED` e cancela a inscrição. 
 
 Inspirado nos créditos do Smoothcomp: atletas e público usam a Camps de graça e o organizador paga uma **taxa por atleta confirmado** em cada evento (`PLATFORM_FEE_PER_ATHLETE_KZ`, por omissão 500 Kz). Cada atleta conta uma vez por evento, seja em quantas categorias for, e continua a contar se desistir ou for reembolsado. Cada evento grava a taxa em vigor quando é criado.
 
-As inscrições pagas online entram na conta da Camps (Multicaixa Express / PayPal). A taxa é descontada delas e o saldo é transferido para o IBAN da organização: os administradores (`PLATFORM_ADMIN_EMAILS`) veem a fila em `/admin/payouts` e registam cada transferência com a referência bancária. Eventos só com inscrições manuais ou gratuitas ficam com saldo negativo (em dívida à Camps).
+As inscrições pagas online entram na conta da Camps (Multicaixa Express / PayPal). A taxa é descontada delas e o saldo é transferido para o IBAN da organização: a equipa financeira vê a fila em **Repasses**, na área de administração, e regista cada transferência com a referência bancária. Eventos só com inscrições manuais ou gratuitas ficam com saldo negativo (em dívida à Camps).
 
 ### Faturas
 
@@ -54,7 +54,7 @@ A Camps emite faturas-recibo da taxa por atleta (a cada repasse, com os atletas 
 
 ### Plano Federação
 
-Federações e ligas têm uma página própria em `/f/<identificador>` e um painel em `/manage/federations/<id>`. Funciona com uma assinatura anual (preços em `FEDERATION_BASIC_KZ` e `FEDERATION_PREMIUM_KZ`). A federação paga-a online em **Plano e faturas** (Multicaixa Express, PayPal): o plano fica ativo logo, por 12 meses, e renovar antes do fim soma os meses ao que faltava. Quem paga por transferência é ativado à mão por um administrador em `/admin/federations`, que pode emitir a fatura no mesmo passo:
+Federações e ligas têm uma página própria em `/f/<identificador>` e um painel em `/manage/federations/<id>`. Funciona com uma assinatura anual (preços em `FEDERATION_BASIC_KZ` e `FEDERATION_PREMIUM_KZ`). A federação paga-a online em **Plano e faturas** (Multicaixa Express, PayPal): o plano fica ativo logo, por 12 meses, e renovar antes do fim soma os meses ao que faltava. Quem paga por transferência é ativado à mão pela equipa financeira em **Federações**, na área de administração, que pode emitir a fatura no mesmo passo:
 
 | | Básico | Premium |
 |---|---|---|
@@ -84,6 +84,25 @@ A plataforma opera em Angola: preços em kwanzas (AOA), fuso de Luanda.
 Um método só aparece ao atleta quando as suas variáveis estão preenchidas. O estado de um pagamento é sempre confirmado junto do provedor; callbacks e retornos do navegador servem apenas de aviso. `APP_URL` tem de ser o endereço público (https) para o callback do Multicaixa Express e o retorno do PayPal funcionarem.
 
 Cada provedor é um ficheiro em `src/server/payments/`; trocar a ProxyPay por outro agregador ou pelo GPO direto da EMIS é reescrever `multicaixa-express.ts`.
+
+## Área de administração
+
+A administração da plataforma fica em `/admin`, **totalmente separada do site**:
+
+- **Entrada e sessão próprias** (`/admin/login`): outro cookie (`camps_admin`), só enviado para `/admin`, `SameSite=Strict`, válido 8 horas. A sessão do site não abre a administração, e a da administração não abre o site.
+- **Sem ligações no site:** nenhum menu público leva lá; quem não é da equipa vê a entrada, e uma página sem permissão responde como se não existisse.
+- **Equipa com papéis** (`User.staffRole`), geridos em **Equipa**:
+
+  | Papel | Pode |
+  |---|---|
+  | Administrador | Tudo, incluindo a equipa, o registo de atividade e o sistema |
+  | Financeiro | Pagamentos, repasses, faturas e planos das federações (vê também organizações e eventos) |
+  | Suporte | Utilizadores (suspender, reativar, terminar sessões, confirmar e-mail), eventos (despublicar, cancelar), e-mails (voltar a enviar) |
+
+  Os e-mails em `PLATFORM_ADMIN_EMAILS` são sempre administradores: é assim que entra o primeiro, e ninguém os consegue tirar pela interface. Para entrar na equipa, a pessoa cria conta no site, confirma o e-mail e um administrador dá-lhe o papel; tirar o papel fecha logo as sessões de administração dela.
+- **Registo de atividade:** cada entrada (e tentativa falhada), suspensão, despublicação, repasse, fatura, mudança de papel e execução da tarefa de fundo fica gravada com autor, data, IP e detalhes, em **Registo de atividade**. A interface não permite apagá-lo.
+- **Secções:** Painel, Utilizadores, Organizações, Eventos, E-mails, Pagamentos, Repasses, Faturas, Federações, Equipa, Registo de atividade e Sistema (configuração do servidor e "correr a tarefa de fundo agora").
+- Uma conta suspensa não entra no site nem na administração, e as sessões abertas terminam no momento da suspensão.
 
 ## Contas e e-mails
 
@@ -165,7 +184,7 @@ Em produção, o servidor recusa-se a arrancar com configuração perigosa ou in
 | Comando | O que faz |
 |---|---|
 | `npm test` | Testes unitários (motor de chaves, palavra-passe, pagamentos) |
-| `npm run test:e2e` | Percorre pelo HTTP registo, conta, painel, chaves, placar por modalidade, inscrições, pagamentos, avisos, faturas e Plano Federação (`scripts/e2e.mjs`, `e2e-extra.mjs`, `e2e-auth.mjs` e `e2e-features.mjs`). Precisa do app rodando sem `RESEND_API_KEY` e com `CRON_SECRET` no `.env`; grava dados de teste no banco, e `npm run db:seed` limpa depois |
+| `npm run test:e2e` | Percorre pelo HTTP registo, conta, painel, chaves, placar por modalidade, inscrições, pagamentos, avisos, faturas, Plano Federação e área de administração (`scripts/e2e.mjs`, `e2e-extra.mjs`, `e2e-auth.mjs`, `e2e-features.mjs` e `e2e-admin.mjs`). Precisa do app rodando sem `RESEND_API_KEY` e com `CRON_SECRET` no `.env`; grava dados de teste no banco, e `npm run db:seed` limpa depois |
 | `node scripts/load-test.mjs <url> [clientes] [segundos]` | Teste de carga simples; com `--pg=<DATABASE_URL>` conta as transações no Postgres |
 | `npx tsx scripts/seed-live.ts [eventos] [áreas]` · `node scripts/load-test-live.mjs <origem> <DATABASE_URL>` | Vários eventos em direto e espectadores a seguir os placares (nunca numa base real) |
 | `npx tsx scripts/seed-scale.ts [utilizadores]` | Dados em massa para testes de carga (nunca numa base real) |

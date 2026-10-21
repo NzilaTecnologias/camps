@@ -9,7 +9,7 @@ export function platformFeePerAthleteCents(): number {
   return Math.round((Number.isFinite(kz) && kz >= 0 ? kz : DEFAULT_FEE_KZ) * 100);
 }
 
-/** E-mails (separados por vírgulas) dos administradores da Camps, que registam os repasses. */
+/** E-mails (separados por vírgulas) que são sempre administradores da área /admin (src/server/admin/session.ts). */
 export function isPlatformAdmin(email: string): boolean {
   return (process.env.PLATFORM_ADMIN_EMAILS ?? "")
     .split(",")

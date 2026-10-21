@@ -1,23 +1,19 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
 import { DataTable, SectionHeader, StatTile } from "@/components/manage/parts";
 import { Badge, Empty, PageTitle, buttonClass } from "@/components/ui";
 import { count, formatDate, formatMoney } from "@/lib/format";
 import { formatIban } from "@/lib/statement";
-import { requireUser } from "@/server/auth";
+import { pageStaff } from "@/server/admin/session";
 import { listPayoutQueue } from "@/server/billing";
-import { isPlatformAdmin } from "@/server/billing-config";
-import { invoiceEventFeeAction, recordPayoutAction } from "../actions";
+import { invoiceEventFeeAction, recordPayoutAction } from "../../actions";
 
 const money = (cents: number) => formatMoney(cents, "AOA");
 
 async function Queue() {
-  const user = await requireUser();
-  // Quem não é administrador não fica a saber que a página existe.
-  if (!isPlatformAdmin(user.email)) notFound();
-  const statements = await listPayoutQueue(user.email);
+  const staff = await pageStaff("finance");
+  const statements = await listPayoutQueue(staff);
   const toPay = statements.filter((s) => s.balanceCents > 0);
   const owed = statements.filter((s) => s.balanceCents < 0);
   const sum = (list: typeof statements, pick: (s: (typeof statements)[number]) => number) => list.reduce((total, s) => total + pick(s), 0);

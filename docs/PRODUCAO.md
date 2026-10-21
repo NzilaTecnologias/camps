@@ -57,7 +57,7 @@ Preencha pelo menos:
 - `POSTGRES_PASSWORD` (gerar com `openssl rand -base64 32`);
 - `RESEND_API_KEY` e `EMAIL_FROM`;
 - `PROXYPAY_TOKEN` e `PROXYPAY_POS_ID`, e/ou as credenciais do PayPal com `PAYPAL_EXCHANGE_RATE`;
-- `PLATFORM_ADMIN_EMAILS`, com os e-mails reais dos administradores;
+- `PLATFORM_ADMIN_EMAILS`, com o e-mail de quem vai administrar a plataforma (o resto da equipa recebe o papel na própria administração);
 - `NEXT_PUBLIC_MAP_TILE_URL` e `NEXT_PUBLIC_MAP_ATTRIBUTION`;
 - `SENTRY_DSN`.
 
@@ -85,8 +85,10 @@ configuração e termina com uma lista do que falta (linhas `"configuração: �
 aparecem na mesma lista.
 
 **Primeiro administrador:** crie conta em `https://DOMINIO/signup` com um e-mail que esteja em
-`PLATFORM_ADMIN_EMAILS`. Depois confirme o e-mail pelo link recebido. O menu da conta passa a mostrar
-"Repasses" e "Federações". **Não corra o seed em produção:** apaga todos os dados.
+`PLATFORM_ADMIN_EMAILS`. Depois confirme o e-mail pelo link recebido e entre na administração em
+`https://DOMINIO/admin/login`, com a mesma palavra-passe. É separada do site: não há ligações para lá nos
+menus públicos. Em **Equipa** dá o papel de Financeiro ou Suporte às outras pessoas, que primeiro criam
+conta no site. **Não corra o seed em produção:** apaga todos os dados.
 
 ## 5. Atualizar
 
