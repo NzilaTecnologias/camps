@@ -34,6 +34,9 @@ export async function UserMenu() {
       </summary>
       <div className="absolute top-full right-0 z-40 mt-2 w-60 rounded-xl border border-white/10 bg-ink p-2 shadow-2xl">
         <p className="truncate px-3 pt-1 pb-2 text-xs text-white/50">{user.email}</p>
+        <Link href="/account" className={itemClass}>
+          A minha conta
+        </Link>
         <Link href="/registrations" className={itemClass}>
           As minhas inscrições
         </Link>

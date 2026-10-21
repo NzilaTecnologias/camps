@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/db";
+import { queueAthleteNotices } from "./athlete-notices";
 import { deliverPendingEmails } from "./email";
 import { kv } from "./kv";
 import { refreshRefund } from "./refunds";
 import { refreshCommunityStats } from "./stats";
+import { expireStalePlanPayment, refreshPlanPayment } from "./federation-plan";
 import { expireStaleMembershipPayment, refreshMembershipPayment, refreshMembershipRefund } from "./memberships";
 import { expireStalePayment, refreshPayment } from "./registrations";
 
@@ -27,6 +29,7 @@ export type JobReport = {
   expired: number;
   stats: boolean;
   sessions: number;
+  notices: number;
   emails: number;
   ms: number;
 };
@@ -71,6 +74,20 @@ export async function reconcilePending(now = new Date()) {
     }
   });
 
+  // Assinaturas do Plano Federação: mesmas regras.
+  const planPayments = await prisma.federationPlanPayment.findMany({
+    where: { status: "PENDING", providerRef: { not: null }, createdAt: { lt: new Date(now.getTime() - 15_000) } },
+    orderBy: { createdAt: "asc" },
+    take: BATCH,
+    select: { id: true, createdAt: true },
+  });
+  await eachLimited(planPayments, PROVIDER_CONCURRENCY, async (payment) => {
+    await refreshPlanPayment(payment.id, { force: true });
+    if (now.getTime() - payment.createdAt.getTime() > PAYMENT_GIVE_UP_MS && (await expireStalePlanPayment(payment.id))) {
+      expired++;
+    }
+  });
+
   const refunds = await prisma.refund.findMany({
     where: { status: "PENDING", manual: false, providerRef: { not: null } },
     orderBy: { createdAt: "asc" },
@@ -86,13 +103,13 @@ export async function reconcilePending(now = new Date()) {
     select: { id: true },
   });
   await eachLimited(membershipRefunds, PROVIDER_CONCURRENCY, (refund) => refreshMembershipRefund(refund.id));
-  return { payments: payments.length + membershipPayments.length, refunds: refunds.length + membershipRefunds.length, expired };
+  return { payments: payments.length + membershipPayments.length + planPayments.length, refunds: refunds.length + membershipRefunds.length, expired };
 }
 
 /** Corre todo o trabalho de fundo, se nenhum outro servidor o estiver a fazer agora. */
 export async function runJobs(options: { forceStats?: boolean } = {}): Promise<JobReport> {
   const started = Date.now();
-  const report: JobReport = { ran: false, payments: 0, refunds: 0, expired: 0, stats: false, sessions: 0, emails: 0, ms: 0 };
+  const report: JobReport = { ran: false, payments: 0, refunds: 0, expired: 0, stats: false, sessions: 0, notices: 0, emails: 0, ms: 0 };
 
   // O bloqueio não segura nenhuma ligação à base de dados: o primeiro a incrementar a chave fica
   // com o trabalho, os outros saem logo. (Um bloqueio dentro de uma transação aberta prenderia
@@ -115,8 +132,11 @@ export async function runJobs(options: { forceStats?: boolean } = {}): Promise<J
     const { count } = await prisma.session.deleteMany({ where: { expiresAt: { lt: new Date() } } });
     report.sessions = count;
 
-    // E-mails que falharam ou ficaram por enviar, e links de acesso caducados há mais de um dia.
+    // Avisos aos atletas (lembrete, chave publicada, resultado) e depois a fila de e-mails: os que
+    // acabaram de entrar, os que falharam e os que ficaram por enviar.
+    report.notices = await queueAthleteNotices();
     report.emails = await deliverPendingEmails();
+    // Links de acesso caducados há mais de um dia.
     await prisma.authToken.deleteMany({ where: { expiresAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } } });
   } finally {
     await store.del(LOCK_KEY);

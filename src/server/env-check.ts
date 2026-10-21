@@ -43,6 +43,9 @@ export function checkProductionEnv(env: Record<string, string | undefined> = pro
     warnings.push("PLATFORM_ADMIN_EMAILS não tem os e-mails reais dos administradores");
   }
   if (!has("SENTRY_DSN")) warnings.push("SENTRY_DSN em falta: os erros ficam só nos registos do servidor");
+  if (!has("INVOICING_PROVIDER")) {
+    warnings.push("Sem programa de faturação certificado (INVOICING_PROVIDER): as faturas saem como documentos internos");
+  }
   if (Object.values(LEGAL).some((value) => value.includes("["))) {
     warnings.push("Dados da empresa por preencher em src/lib/legal.ts (Termos e Política de privacidade)");
   }

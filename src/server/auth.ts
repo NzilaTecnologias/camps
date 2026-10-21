@@ -48,11 +48,13 @@ function checkPassword(password: string) {
   }
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export async function signUp(input: { name: string; email: string; password: string; acceptedTerms: boolean }) {
   const email = input.email.trim().toLowerCase();
   const name = input.name.trim();
   if (name.length < 2) throw new UserError("Informe seu nome");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new UserError("Informe um e-mail válido");
+  if (!EMAIL_PATTERN.test(email)) throw new UserError("Informe um e-mail válido");
   checkPassword(input.password);
   if (name.length > 120 || email.length > 254) throw new UserError("Nome ou e-mail demasiado longo");
   if (!input.acceptedTerms) {
@@ -131,12 +133,18 @@ export async function requireVerifiedUser(): Promise<CurrentUser> {
 // ---------- Links enviados por e-mail ----------
 
 /** Cria um link de uso único e anula os anteriores do mesmo tipo ainda por usar. */
-async function issueToken(userId: string, kind: AuthTokenKind, minutes: number): Promise<string> {
+async function issueToken(userId: string, kind: AuthTokenKind, minutes: number, newEmail?: string): Promise<string> {
   const token = randomBytes(32).toString("base64url");
   await prisma.$transaction([
     prisma.authToken.deleteMany({ where: { userId, kind, usedAt: null } }),
     prisma.authToken.create({
-      data: { userId, kind, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + minutes * 60 * 1000) },
+      data: {
+        userId,
+        kind,
+        newEmail,
+        tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + minutes * 60 * 1000),
+      },
     }),
   ]);
   return token;
@@ -177,7 +185,7 @@ export async function resendVerificationEmail(userId: string) {
 }
 
 /** Gasta um link: devolve o utilizador se o link existe, é deste tipo, não expirou e não foi usado. */
-async function consumeToken(token: string, kind: AuthTokenKind): Promise<string | null> {
+async function consumeToken(token: string, kind: AuthTokenKind): Promise<{ userId: string; newEmail: string | null } | null> {
   if (!token || token.length > 100) return null;
   const tokenHash = hashToken(token);
   const { count } = await prisma.authToken.updateMany({
@@ -185,8 +193,7 @@ async function consumeToken(token: string, kind: AuthTokenKind): Promise<string 
     data: { usedAt: new Date() },
   });
   if (count === 0) return null;
-  const row = await prisma.authToken.findUniqueOrThrow({ where: { tokenHash }, select: { userId: true } });
-  return row.userId;
+  return prisma.authToken.findUniqueOrThrow({ where: { tokenHash }, select: { userId: true, newEmail: true } });
 }
 
 /** Só para mostrar a página certa: não gasta o link. */
@@ -201,15 +208,15 @@ export async function tokenIsValid(token: string, kind: AuthTokenKind): Promise<
 }
 
 export async function verifyEmail(token: string) {
-  const userId = await consumeToken(token, "VERIFY_EMAIL");
-  if (!userId) throw new UserError("Este link já foi usado ou expirou. Entre na sua conta e peça um novo.");
-  await prisma.user.updateMany({ where: { id: userId, emailVerifiedAt: null }, data: { emailVerifiedAt: new Date() } });
+  const used = await consumeToken(token, "VERIFY_EMAIL");
+  if (!used) throw new UserError("Este link já foi usado ou expirou. Entre na sua conta e peça um novo.");
+  await prisma.user.updateMany({ where: { id: used.userId, emailVerifiedAt: null }, data: { emailVerifiedAt: new Date() } });
 }
 
 /** Responde sempre da mesma maneira, exista ou não uma conta com o e-mail. */
 export async function requestPasswordReset(rawEmail: string) {
   const email = rawEmail.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new UserError("Informe um e-mail válido");
+  if (!EMAIL_PATTERN.test(email)) throw new UserError("Informe um e-mail válido");
   const user = await prisma.user.findUnique({ where: { email }, select: { id: true, name: true, email: true } });
   if (!user) return;
   const token = await issueToken(user.id, "PASSWORD_RESET", PASSWORD_RESET_MINUTES);
@@ -233,8 +240,9 @@ export async function resetPassword(token: string, password: string, confirmatio
   checkPassword(password);
   if (password !== confirmation) throw new UserError("As duas palavras-passe não são iguais");
   const passwordHash = await hashPassword(password);
-  const userId = await consumeToken(token, "PASSWORD_RESET");
-  if (!userId) throw new UserError("Este link já foi usado ou expirou. Peça um novo.");
+  const used = await consumeToken(token, "PASSWORD_RESET");
+  if (!used) throw new UserError("Este link já foi usado ou expirou. Peça um novo.");
+  const { userId } = used;
 
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true, emailVerifiedAt: true } });
   await prisma.$transaction([
@@ -245,4 +253,111 @@ export async function resetPassword(token: string, password: string, confirmatio
   ]);
   await clearFailures(user.email);
   await createSession(userId);
+}
+
+// ---------- A minha conta ----------
+
+const EMAIL_CHANGE_HOURS = 24;
+
+/** Hash do token da sessão deste pedido, para terminar as outras sessões e deixar esta. */
+async function currentSessionHash(): Promise<string | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  return token ? hashToken(token) : null;
+}
+
+export async function requirePassword(userId: string, password: string) {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { passwordHash: true } });
+  if (password.length > MAX_PASSWORD_LENGTH || !(await verifyPassword(password, user.passwordHash))) {
+    throw new UserError("A palavra-passe atual não está certa");
+  }
+}
+
+export async function updateName(userId: string, rawName: string) {
+  const name = rawName.trim();
+  if (name.length < 2) throw new UserError("Informe seu nome");
+  if (name.length > 120) throw new UserError("Nome demasiado longo");
+  await prisma.user.update({ where: { id: userId }, data: { name } });
+}
+
+/** Troca a palavra-passe e termina as sessões dos outros aparelhos (esta continua aberta). */
+export async function changePassword(userId: string, current: string, next: string, confirmation: string) {
+  await requirePassword(userId, current);
+  checkPassword(next);
+  if (next !== confirmation) throw new UserError("As duas palavras-passe novas não são iguais");
+  if (next === current) throw new UserError("A palavra-passe nova tem de ser diferente da atual");
+  const keep = await currentSessionHash();
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(next) } }),
+    prisma.session.deleteMany({ where: { userId, ...(keep ? { tokenHash: { not: keep } } : {}) } }),
+    prisma.authToken.deleteMany({ where: { userId, kind: "PASSWORD_RESET", usedAt: null } }),
+  ]);
+}
+
+/** Termina todas as sessões menos a deste aparelho. Devolve quantas terminou. */
+export async function endOtherSessions(userId: string): Promise<number> {
+  const keep = await currentSessionHash();
+  const { count } = await prisma.session.deleteMany({ where: { userId, ...(keep ? { tokenHash: { not: keep } } : {}) } });
+  return count;
+}
+
+/**
+ * Pede a troca de e-mail: o novo só passa a valer quando o link enviado para lá for aberto. O
+ * e-mail antigo recebe um aviso, para o titular saber se não foi ele.
+ */
+export async function requestEmailChange(userId: string, rawEmail: string, password: string) {
+  const email = rawEmail.trim().toLowerCase();
+  if (!EMAIL_PATTERN.test(email) || email.length > 254) throw new UserError("Informe um e-mail válido");
+  await requirePassword(userId, password);
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true, name: true, email: true } });
+  if (email === user.email) throw new UserError("Esse já é o e-mail da sua conta");
+  if (await prisma.user.findUnique({ where: { email }, select: { id: true } })) {
+    throw new UserError("Já existe uma conta com esse e-mail");
+  }
+  const token = await issueToken(user.id, "EMAIL_CHANGE", EMAIL_CHANGE_HOURS * 60, email);
+  const confirmId = await enqueueEmail(
+    prisma,
+    email,
+    renderEmail({
+      subject: "Confirme o novo e-mail da sua conta Camps",
+      heading: "Confirme o novo e-mail",
+      paragraphs: [`Olá ${user.name},`, `Pediu para a sua conta da Camps passar a usar este e-mail (${email}).`],
+      action: { label: "Confirmar o novo e-mail", url: `${appUrl()}/confirm-email-change?token=${token}` },
+      footnote: `O link é válido durante ${EMAIL_CHANGE_HOURS} horas. Até lá, a conta continua com o e-mail antigo.`,
+    }),
+    { sensitive: true },
+  );
+  const noticeId = await enqueueEmail(
+    prisma,
+    user.email,
+    renderEmail({
+      subject: "Pedido para mudar o e-mail da sua conta Camps",
+      heading: "Pedido de mudança de e-mail",
+      paragraphs: [
+        `Olá ${user.name},`,
+        `Foi pedido que a sua conta da Camps passe a usar o e-mail ${email}. A mudança só acontece quando o link enviado para esse endereço for aberto.`,
+      ],
+      footnote: "Se não foi você, entre na conta e mude a palavra-passe: alguém a conhece.",
+    }),
+  );
+  deliverLater(confirmId);
+  deliverLater(noticeId);
+}
+
+/** Abre o link enviado para o e-mail novo: a conta passa a usá-lo, já confirmado. */
+export async function confirmEmailChange(token: string) {
+  const used = await consumeToken(token, "EMAIL_CHANGE");
+  if (!used?.newEmail) throw new UserError("Este link já foi usado ou expirou. Peça a mudança outra vez em A minha conta.");
+  if (await prisma.user.findUnique({ where: { email: used.newEmail }, select: { id: true } })) {
+    throw new UserError("Entretanto foi criada outra conta com esse e-mail");
+  }
+  await prisma.user.update({ where: { id: used.userId }, data: { email: used.newEmail, emailVerifiedAt: new Date() } });
+}
+
+/** E-mail novo à espera de confirmação, se houver. */
+export async function pendingEmailChange(userId: string): Promise<string | null> {
+  const row = await prisma.authToken.findFirst({
+    where: { userId, kind: "EMAIL_CHANGE", usedAt: null, expiresAt: { gt: new Date() } },
+    select: { newEmail: true },
+  });
+  return row?.newEmail ?? null;
 }

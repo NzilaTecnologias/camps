@@ -4,7 +4,8 @@ import { ActionForm } from "@/components/action-form";
 import { SelectField } from "@/components/field";
 import { LiveClock } from "@/components/scoreboard-live";
 import { BackLink, Badge, Card, LinkButton, PageTitle, buttonClass } from "@/components/ui";
-import { DURATIONS, METHODS, formatDuration, type ScoreboardState } from "@/lib/scoreboard";
+import { formatDuration, type ScoreboardState } from "@/lib/scoreboard";
+import { penaltyWarning, type Mark, type SportRules } from "@/lib/sport-rules";
 import { requireUser } from "@/server/auth";
 import { getScoreboardControl } from "@/server/scoreboard";
 import { clockAction, finishMatchAction, openScoreboardAction, scoreAction } from "../../../scoreboard-actions";
@@ -22,8 +23,26 @@ function ChangeButton({ change, children }: { change: string; children: string }
   );
 }
 
-function CornerControl({ side, state }: { side: "red" | "blue"; state: ScoreboardState }) {
+/** Botões de um marcador: os da modalidade e um −1 para corrigir. */
+function MarkButtons({ field, mark }: { field: "points" | "advantages" | "penalties"; mark: Mark }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted">{mark.label}</p>
+      <div className="flex flex-wrap gap-2">
+        {mark.steps.map((step) => (
+          <ChangeButton key={step.value} change={`${field}:${step.value}`}>
+            {step.label}
+          </ChangeButton>
+        ))}
+        <ChangeButton change={`${field}:-1`}>−1</ChangeButton>
+      </div>
+    </div>
+  );
+}
+
+function CornerControl({ side, state, rules }: { side: "red" | "blue"; state: ScoreboardState; rules: SportRules }) {
   const corner = state[side];
+  const warning = penaltyWarning(rules, corner.penalties);
   return (
     <Card className="overflow-hidden">
       <div className={`h-2 ${CORNER[side].bar}`} />
@@ -37,23 +56,20 @@ function CornerControl({ side, state }: { side: "red" | "blue"; state: Scoreboar
           <p className="font-display text-7xl font-bold leading-none tabular-nums">{corner.points}</p>
         </div>
         <p className="mt-3 text-sm text-muted">
-          Vantagens: <strong className="text-foreground">{corner.advantages}</strong> · Punições:{" "}
-          <strong className="text-foreground">{corner.penalties}</strong>
+          {rules.points.label}: <strong className="text-foreground">{corner.points}</strong>
+          {rules.advantages && (
+            <>
+              {" "}· {rules.advantages.label}: <strong className="text-foreground">{corner.advantages}</strong>
+            </>
+          )}{" "}
+          · {rules.penalties.label}: <strong className="text-foreground">{corner.penalties}</strong>
         </p>
+        {warning && <p className="mt-2 rounded-lg bg-danger/10 px-3 py-2 text-sm font-semibold text-danger">{warning}</p>}
 
-        <ActionForm action={scoreAction.bind(null, state.matchId, side)} className="mt-4 flex flex-col gap-3">
-          <div className="grid grid-cols-4 gap-2">
-            <ChangeButton change="points:2">+2</ChangeButton>
-            <ChangeButton change="points:3">+3</ChangeButton>
-            <ChangeButton change="points:4">+4</ChangeButton>
-            <ChangeButton change="points:-1">−1</ChangeButton>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <ChangeButton change="advantages:1">Vantagem +</ChangeButton>
-            <ChangeButton change="advantages:-1">Vantagem −</ChangeButton>
-            <ChangeButton change="penalties:1">Punição +</ChangeButton>
-            <ChangeButton change="penalties:-1">Punição −</ChangeButton>
-          </div>
+        <ActionForm action={scoreAction.bind(null, state.matchId, side)} className="mt-4 flex flex-col gap-4">
+          <MarkButtons field="points" mark={rules.points} />
+          {rules.advantages && <MarkButtons field="advantages" mark={rules.advantages} />}
+          <MarkButtons field="penalties" mark={rules.penalties} />
         </ActionForm>
       </div>
     </Card>
@@ -65,7 +81,7 @@ async function ScoreboardControl({ params }: { params: Promise<{ matchId: string
   const user = await requireUser();
   const control = await getScoreboardControl(user.id, matchId);
   if (!control) notFound();
-  const { state, mats } = control;
+  const { state, mats, rules } = control;
   // Ao terminar a luta, a mesa volta à lista de áreas e lutas prontas.
   const deskPath = `/manage/events/${control.eventId}/scoreboard`;
   const isRunning = state.clock.startedAt !== null;
@@ -79,6 +95,9 @@ async function ScoreboardControl({ params }: { params: Promise<{ matchId: string
           <p className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted">
             {state.red.name} × {state.blue.name}
             {state.matName ? <Badge tone="primary">{state.matName}</Badge> : <Badge>Sem área</Badge>}
+            <Badge>
+              {state.sport} · regras {rules.rulebook}
+            </Badge>
           </p>
         </div>
         {control.matId && control.status === "READY" && (
@@ -119,12 +138,12 @@ async function ScoreboardControl({ params }: { params: Promise<{ matchId: string
                 <option value="">Sem área (não aparece em ecrãs)</option>
               </SelectField>
               <SelectField
-                label="Duração da luta"
+                label={rules.rounds ? `Duração de cada round (${rules.rounds} rounds)` : "Duração da luta"}
                 name="durationSeconds"
-                defaultValue={state.clock.durationSeconds}
+                defaultValue={control.isOpen ? state.clock.durationSeconds : rules.defaultDuration}
                 disabled={control.isOpen}
               >
-                {DURATIONS.map((seconds) => (
+                {rules.durations.map((seconds) => (
                   <option key={seconds} value={seconds}>
                     {formatDuration(seconds)}
                   </option>
@@ -159,8 +178,8 @@ async function ScoreboardControl({ params }: { params: Promise<{ matchId: string
               </Card>
 
               <div className="grid gap-6 lg:grid-cols-2">
-                <CornerControl side="red" state={state} />
-                <CornerControl side="blue" state={state} />
+                <CornerControl side="red" state={state} rules={rules} />
+                <CornerControl side="blue" state={state} rules={rules} />
               </div>
 
               <Card className="p-5">
@@ -177,8 +196,8 @@ async function ScoreboardControl({ params }: { params: Promise<{ matchId: string
                     <option value="red">{state.red.name} (vermelho)</option>
                     <option value="blue">{state.blue.name} (azul)</option>
                   </SelectField>
-                  <SelectField label="Como terminou" name="method" defaultValue={METHODS[0]}>
-                    {METHODS.map((method) => (
+                  <SelectField label="Como terminou" name="method" defaultValue={rules.methods[0]}>
+                    {rules.methods.map((method) => (
                       <option key={method} value={method}>
                         {method}
                       </option>

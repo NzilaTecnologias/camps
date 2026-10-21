@@ -14,7 +14,7 @@ import {
   setEventFederation,
   updateEventSettings,
 } from "@/server/organizer";
-import { updatePayoutDetails } from "@/server/billing";
+import { updateOrganizerBilling, updatePayoutDetails } from "@/server/billing";
 import { cancelRegistration, requestRefund } from "@/server/refunds";
 
 // Ações das secções do painel de um evento. Cada função do servidor confirma que o
@@ -149,6 +149,18 @@ export async function setEventFederationAction(eventId: string, _state: ActionSt
     const user = await requireUser();
     await setEventFederation(user.id, eventId, text(formData, "federationId"), text(formData, "requiresMembership") === "1");
     publicDataChanged({ eventId, events: true, community: true });
+    refresh();
+  });
+}
+
+export async function updateOrganizerBillingAction(organizerId: string, _state: ActionState, formData: FormData) {
+  return runAction(async () => {
+    const user = await requireUser();
+    await updateOrganizerBilling(user.id, organizerId, {
+      name: text(formData, "billingName"),
+      nif: text(formData, "billingNif"),
+      address: text(formData, "billingAddress"),
+    });
     refresh();
   });
 }

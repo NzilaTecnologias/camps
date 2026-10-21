@@ -27,6 +27,9 @@ async function main() {
   await prisma.organizerMember.deleteMany();
   await prisma.organizer.deleteMany();
   await prisma.emailOutbox.deleteMany();
+  await prisma.notificationLog.deleteMany();
+  await prisma.invoice.deleteMany();
+  await prisma.invoiceSeries.deleteMany();
   await prisma.user.deleteMany();
 
   const owner = await prisma.user.create({

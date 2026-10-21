@@ -1,7 +1,8 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { UserError } from "@/lib/errors";
-import { clockRemainingMs, DURATIONS, METHODS, type ScoreboardState } from "@/lib/scoreboard";
+import { clockRemainingMs, type ScoreboardState } from "@/lib/scoreboard";
+import { applyChange, rulesFor, validChange } from "@/lib/sport-rules";
 import { parseStreamUrl } from "@/lib/stream";
 import { reportResult } from "./brackets";
 import { cachedJson, kv } from "./kv";
@@ -16,7 +17,9 @@ const scoreboardInclude = {
   blue: corner,
   mat: { select: { name: true } },
   bracket: {
-    select: { division: { select: { name: true, event: { select: { name: true, status: true, organizerId: true } } } } },
+    select: {
+      division: { select: { name: true, event: { select: { name: true, status: true, organizerId: true, sport: true } } } },
+    },
   },
 } satisfies Prisma.MatchInclude;
 
@@ -30,8 +33,18 @@ function toState(match: MatchWithScoreboard): ScoreboardState {
     advantages,
     penalties,
   });
+  const { sport } = match.bracket.division.event;
+  const rules = rulesFor(sport);
   return {
     matchId: match.id,
+    sport,
+    labels: {
+      points: rules.points.label,
+      advantages: rules.advantages?.label ?? null,
+      advantagesShort: rules.advantages?.short ?? null,
+      penalties: rules.penalties.label,
+      penaltiesShort: rules.penalties.short,
+    },
     eventName: match.bracket.division.event.name,
     divisionName: match.bracket.division.name,
     matName: match.mat?.name ?? null,
@@ -98,17 +111,17 @@ async function forgetMats(...matIds: (string | null | undefined)[]) {
 async function requireOpenMatch(userId: string, matchId: string) {
   const match = await prisma.match.findFirst({
     where: { id: matchId, bracket: { division: { event: memberOf(userId) } } },
-    include: { bracket: { select: { division: { select: { eventId: true } } } } },
+    include: { bracket: { select: { division: { select: { eventId: true, event: { select: { sport: true } } } } } } },
   });
   if (!match) throw new UserError("Luta não encontrada");
   if (match.status !== "READY") throw new UserError("Esta luta ainda não está pronta ou já terminou");
-  return match;
+  return { ...match, rules: rulesFor(match.bracket.division.event.sport) };
 }
 
 /** Põe a luta no placar de uma área e define a duração, se o cronómetro ainda não arrancou. */
 export async function openScoreboard(userId: string, matchId: string, matId: string, durationSeconds: number) {
   const match = await requireOpenMatch(userId, matchId);
-  if (!DURATIONS.includes(durationSeconds)) throw new UserError("Duração inválida");
+  if (!match.rules.durations.includes(durationSeconds)) throw new UserError("Duração inválida para esta modalidade");
   const mat = matId
     ? await prisma.mat.findFirst({ where: { id: matId, eventId: match.bracket.division.eventId } })
     : null;
@@ -140,14 +153,30 @@ const SCORE_FIELDS = {
 export type Corner = keyof typeof SCORE_FIELDS;
 export type ScoreField = keyof (typeof SCORE_FIELDS)["red"];
 
+/** Soma ou tira num marcador, com os botões e as regras da modalidade do evento. */
 export async function adjustScore(userId: string, matchId: string, side: string, field: string, delta: number) {
   const match = await requireOpenMatch(userId, matchId);
   if (side !== "red" && side !== "blue") throw new UserError("Canto inválido");
   if (field !== "points" && field !== "advantages" && field !== "penalties") throw new UserError("Marcador inválido");
-  if (!Number.isInteger(delta) || Math.abs(delta) > 4) throw new UserError("Valor inválido");
+  const change = { field, delta } as const;
+  if (!Number.isInteger(delta) || !validChange(match.rules, change)) throw new UserError("Valor inválido nesta modalidade");
 
-  const column = SCORE_FIELDS[side][field];
-  await prisma.match.update({ where: { id: match.id }, data: { [column]: Math.max(0, match[column] + delta) } });
+  const other = side === "red" ? "blue" : "red";
+  const score = (corner: Corner) => ({
+    points: match[SCORE_FIELDS[corner].points],
+    advantages: match[SCORE_FIELDS[corner].advantages],
+    penalties: match[SCORE_FIELDS[corner].penalties],
+  });
+  const next = applyChange(match.rules, score(side), score(other), change);
+  const columns = (corner: Corner, values: ReturnType<typeof score>) => ({
+    [SCORE_FIELDS[corner].points]: values.points,
+    [SCORE_FIELDS[corner].advantages]: values.advantages,
+    [SCORE_FIELDS[corner].penalties]: values.penalties,
+  });
+  await prisma.match.update({
+    where: { id: match.id },
+    data: { ...columns(side, next.self), ...columns(other, next.opponent) },
+  });
   await forgetMats(match.matId);
   return match.bracket.division.eventId;
 }
@@ -180,7 +209,7 @@ export async function controlClock(userId: string, matchId: string, action: stri
 export async function finishMatch(userId: string, matchId: string, winner: string, method: string) {
   const match = await requireOpenMatch(userId, matchId);
   if (winner !== "red" && winner !== "blue") throw new UserError("Escolha o vencedor");
-  if (!METHODS.includes(method)) throw new UserError("Escolha como a luta terminou");
+  if (!match.rules.methods.includes(method)) throw new UserError("Escolha como a luta terminou");
   const winnerId = winner === "red" ? match.redId : match.blueId;
   if (!winnerId) throw new UserError("Esta luta ainda não tem os dois atletas");
 
@@ -251,6 +280,7 @@ export async function getScoreboardControl(userId: string, matchId: string) {
                   name: true,
                   status: true,
                   organizerId: true,
+                  sport: true,
                   mats: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } },
                 },
               },
@@ -264,6 +294,7 @@ export async function getScoreboardControl(userId: string, matchId: string) {
   const { division } = match.bracket;
   return {
     state: toState(match),
+    rules: rulesFor(division.event.sport),
     status: match.status,
     isOpen: match.clockRemainingMs !== null,
     matId: match.matId,

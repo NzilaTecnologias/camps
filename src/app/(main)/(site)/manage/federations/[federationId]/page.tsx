@@ -23,9 +23,13 @@ async function Overview({ params }: { params: Promise<{ federationId: string }> 
       {!active && (
         <div className="mb-8">
           <Notice>
-            O plano desta federação não está ativo. A Camps ativa-o depois do pagamento da assinatura anual (
+            O plano desta federação não está ativo. A assinatura é anual (
             {formatMoney(federationPlanPriceCents("BASIC"), "AOA")} Básico ou {formatMoney(federationPlanPriceCents("PREMIUM"), "AOA")}{" "}
-            Premium). Até lá pode preparar a página e os planos de filiação.
+            Premium) e paga-se online em{" "}
+            <Link href={`${base}/billing`} className="font-semibold text-primary hover:underline">
+              Plano e faturas
+            </Link>
+            . Até lá pode preparar a página e os planos de filiação.
           </Notice>
         </div>
       )}

@@ -31,6 +31,8 @@ jobs:
       PAYMENTS_SIMULATOR: "1"
       JOBS_INTERVAL_SECONDS: "0"
       PLATFORM_ADMIN_EMAILS: admin@camps.local
+      # Os testes ponta a ponta correm a tarefa de fundo por /api/cron/jobs.
+      CRON_SECRET: segredo-so-para-os-testes-do-ci-0123456789
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4

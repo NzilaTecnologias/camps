@@ -61,7 +61,7 @@ function Logo() {
 export default function MainLayout({ children }: { children: ReactNode }) {
   return (
     <>
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-ink text-white">
+      <header className="sticky top-0 z-30 border-b border-white/10 bg-ink text-white print:hidden">
         <nav aria-label="Principal" className="relative mx-auto flex h-14 w-full max-w-6xl items-center gap-4 px-4">
           {/* O menu é centrado na página (ver NavMenu); as pontas ficam encostadas aos lados. */}
           <div className="flex flex-1 items-center">
@@ -79,7 +79,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
         <VerifyEmailBanner />
       </Suspense>
       <main className="flex-1">{children}</main>
-      <footer className="border-t border-white/10 bg-ink text-white">
+      <footer className="border-t border-white/10 bg-ink text-white print:hidden">
         <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-12 sm:grid-cols-2 lg:grid-cols-[1.5fr_repeat(4,1fr)]">
           <div>
             <Logo />

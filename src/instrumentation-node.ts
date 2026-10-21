@@ -32,7 +32,7 @@ function startJobs() {
     try {
       const { runJobs } = await import("./server/jobs");
       const report = await runJobs();
-      if (report.ran && (report.payments || report.refunds || report.expired || report.emails)) {
+      if (report.ran && (report.payments || report.refunds || report.expired || report.notices || report.emails)) {
         console.log(JSON.stringify({ level: "info", msg: "jobs", ...report }));
       }
     } catch (error) {

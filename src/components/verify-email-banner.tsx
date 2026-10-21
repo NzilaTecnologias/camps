@@ -7,7 +7,7 @@ export async function VerifyEmailBanner() {
   const user = await getCurrentUser();
   if (!user || user.emailVerified) return null;
   return (
-    <div role="status" className="border-b border-warning/30 bg-warning/15 text-sm text-foreground">
+    <div role="status" className="border-b border-warning/30 bg-warning/15 text-sm text-foreground print:hidden">
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2">
         <Icon name="alert" className="h-4 w-4 text-warning" />
         <span>

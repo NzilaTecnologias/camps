@@ -52,3 +52,13 @@ export function normalizeColor(value: string): string | null {
   const color = value.trim().toLowerCase();
   return /^#[0-9a-f]{6}$/.test(color) ? color : null;
 }
+
+/**
+ * Plano depois de pagar `months` meses: se o atual ainda está em dia, os meses somam-se ao fim
+ * dele (renovar antes do tempo não se perde); senão contam a partir de hoje. O plano passa a ser o
+ * pago, por isso mudar de Básico para Premium vale já para o tempo que faltava.
+ */
+export function extendPlan(current: PlanState, plan: FederationPlanName, months: number, now = new Date()) {
+  const start = planActive(current, now) ? current.planExpiresAt! : now;
+  return { plan, planExpiresAt: membershipValidUntil(start, months) };
+}

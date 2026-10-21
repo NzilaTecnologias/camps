@@ -8,9 +8,20 @@ export type Clock = {
 
 export type CornerScore = { name: string; academy: string | null; points: number; advantages: number; penalties: number };
 
+/** Nomes dos marcadores na modalidade do evento (src/lib/sport-rules.ts). */
+export type ScoreLabels = {
+  points: string;
+  advantages: string | null;
+  advantagesShort: string | null;
+  penalties: string;
+  penaltiesShort: string;
+};
+
 /** O que os ecrãs de placar recebem da API. */
 export type ScoreboardState = {
   matchId: string;
+  sport: string;
+  labels: ScoreLabels;
   eventName: string;
   divisionName: string;
   matName: string | null;
@@ -23,10 +34,6 @@ export type ScoreboardState = {
   /** Hora do servidor, para os ecrãs acertarem o relógio com ele e não com o do aparelho. */
   serverNow: number;
 };
-
-export const DURATIONS = [120, 180, 240, 300, 360, 420, 480, 600];
-
-export const METHODS = ["Pontos", "Finalização", "Vantagens", "Decisão dos árbitros", "Desclassificação", "Desistência"];
 
 /** Tempo que falta no instante `now`, nunca abaixo de zero. */
 export function clockRemainingMs(clock: Clock, now: number): number {

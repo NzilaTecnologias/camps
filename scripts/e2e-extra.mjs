@@ -205,12 +205,13 @@ await alice.submit(`${E}/brackets`, "Gerar chaves em falta", { type: "SINGLE_ELI
 r = await alice.get(`${E}/scoreboard`);
 const control = r.html.match(/\/manage\/matches\/\w+\/scoreboard/)?.[0];
 const matId = r.html.match(/href="\/scoreboard\/(\w+)"/)?.[1];
-await alice.submit(control, 'name="matId"', { matId, durationSeconds: "300" });
+// Evento de judo: as regras IJF ficam-se pelos 4 minutos.
+await alice.submit(control, 'name="matId"', { matId, durationSeconds: "240" });
 await alice.submit(control, 'name="clock"', { clock: "start" });
 await new Promise((resolve) => setTimeout(resolve, 1200));
 await alice.submit(control, 'name="clock"', { clock: "reset" });
 const board = (await (await fetch(`${BASE}/api/mats/${matId}/scoreboard`)).json()).scoreboard;
-check("reiniciar põe o cronómetro a zeros e parado", board?.clock.remainingMs === 300000 && board.clock.startedAt === null, JSON.stringify(board?.clock));
+check("reiniciar põe o cronómetro a zeros e parado", board?.clock.remainingMs === 240000 && board.clock.startedAt === null, JSON.stringify(board?.clock));
 r = await anon.get(`/scoreboard/${matId}`);
 check("ecrã de TV abre", r.status === 200);
 r = await anon.get(`/overlay/${matId}`);

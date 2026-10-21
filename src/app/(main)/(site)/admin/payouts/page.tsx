@@ -9,7 +9,7 @@ import { formatIban } from "@/lib/statement";
 import { requireUser } from "@/server/auth";
 import { listPayoutQueue } from "@/server/billing";
 import { isPlatformAdmin } from "@/server/billing-config";
-import { recordPayoutAction } from "../actions";
+import { invoiceEventFeeAction, recordPayoutAction } from "../actions";
 
 const money = (cents: number) => formatMoney(cents, "AOA");
 
@@ -96,6 +96,14 @@ async function Queue() {
                     />
                     <button type="submit" className={buttonClass("primary", "sm")}>
                       Registar transferência
+                    </button>
+                    <p className="text-xs text-muted">A taxa dos atletas confirmados sai faturada com a transferência.</p>
+                  </ActionForm>
+                )}
+                {s.athletes > 0 && (
+                  <ActionForm action={invoiceEventFeeAction.bind(null, s.event.id)} className="mt-2 flex flex-col gap-1">
+                    <button type="submit" className={buttonClass("secondary", "sm")}>
+                      Faturar a taxa agora
                     </button>
                   </ActionForm>
                 )}

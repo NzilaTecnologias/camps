@@ -78,9 +78,10 @@ export default function PrivacyPage() {
 
       <LegalSection n={7} title="Os seus direitos">
         <p>
-          Pode pedir acesso, correção ou eliminação dos seus dados, ou opor-se a um tratamento, escrevendo para{" "}
-          <strong>{LEGAL.contactEmail}</strong>. Respondemos no prazo legal. Pode também apresentar queixa à Agência de
-          Protecção de Dados (APD).
+          Em <strong>A minha conta</strong> pode corrigir o nome e o e-mail, descarregar uma cópia dos seus dados e
+          eliminar a conta. Para outros pedidos (acesso, correção dos dados de atletas, oposição a um tratamento),
+          escreva para <strong>{LEGAL.contactEmail}</strong>. Respondemos no prazo legal. Pode também apresentar queixa à
+          Agência de Protecção de Dados (APD).
         </p>
       </LegalSection>
 

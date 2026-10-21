@@ -63,8 +63,8 @@ function DisplayCorner({ side, state }: { side: "red" | "blue"; state: Scoreboar
         )}
       </div>
       <div className="flex items-end gap-[2.5vw]">
-        <Marks label="Vantagens" value={corner.advantages} tone="text-yellow-300" />
-        <Marks label="Punições" value={corner.penalties} tone="text-white/80" />
+        {state.labels.advantages && <Marks label={state.labels.advantages} value={corner.advantages} tone="text-yellow-300" />}
+        <Marks label={state.labels.penalties} value={corner.penalties} tone="text-white/80" />
       </div>
       <span className="w-[18vw] text-right font-display text-[17vw] font-bold leading-none tabular-nums">
         {corner.points}
@@ -117,8 +117,14 @@ function OverlayCorner({ side, state }: { side: "red" | "blue"; state: Scoreboar
           <p className="truncate text-xl font-bold uppercase leading-tight">{corner.name}</p>
           <p className="truncate text-xs text-white/60">{corner.academy ?? " "}</p>
         </div>
-        <span className="text-sm font-semibold text-yellow-300">V {corner.advantages}</span>
-        <span className="text-sm font-semibold text-white/70">P {corner.penalties}</span>
+        {state.labels.advantagesShort && (
+          <span className="text-sm font-semibold text-yellow-300">
+            {state.labels.advantagesShort} {corner.advantages}
+          </span>
+        )}
+        <span className="text-sm font-semibold text-white/70">
+          {state.labels.penaltiesShort} {corner.penalties}
+        </span>
         <span className="w-12 text-right font-display text-4xl font-bold leading-none tabular-nums">{corner.points}</span>
       </div>
     </div>
@@ -160,7 +166,8 @@ export function ScoreboardCard({ matId }: { matId: string }) {
         <p className="truncate text-xs text-muted">{scoreboard[side].academy ?? "Sem academia"}</p>
       </div>
       <span className="text-xs text-muted">
-        V {scoreboard[side].advantages} · P {scoreboard[side].penalties}
+        {scoreboard.labels.advantagesShort && `${scoreboard.labels.advantagesShort} ${scoreboard[side].advantages} · `}
+        {scoreboard.labels.penaltiesShort} {scoreboard[side].penalties}
       </span>
       <span className="w-8 text-right font-display text-3xl font-bold leading-none tabular-nums">
         {scoreboard[side].points}

@@ -82,30 +82,33 @@ enum MatchSlot {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String
-  createdAt    DateTime @default(now())
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String
+  name            String
+  createdAt       DateTime  @default(now())
   /// Quando o utilizador abriu o link de confirmação enviado para o e-mail.
   emailVerifiedAt DateTime?
   /// Quando aceitou os Termos de utilização e a Política de privacidade (no registo).
   termsAcceptedAt DateTime?
+  /// Conta eliminada a pedido do titular: os dados pessoais foram apagados e a conta não entra mais.
+  deletedAt       DateTime?
 
   // Uma conta pode gerenciar vários perfis (ex.: pai inscrevendo os filhos).
-  athletes      AthleteProfile[]
-  memberships   OrganizerMember[]
-  registrations Registration[]    @relation("RegisteredBy")
-  sessions      Session[]
-  refunds       Refund[]
-  federations   FederationMember[]
+  athletes          AthleteProfile[]
+  memberships       OrganizerMember[]
+  registrations     Registration[]     @relation("RegisteredBy")
+  sessions          Session[]
+  refunds           Refund[]
+  federations       FederationMember[]
   membershipRefunds MembershipRefund[]
-  authTokens    AuthToken[]
+  authTokens        AuthToken[]
 }
 
 enum AuthTokenKind {
   VERIFY_EMAIL
   PASSWORD_RESET
+  EMAIL_CHANGE
 }
 
 /// Links de uso único enviados por e-mail (confirmar o e-mail, nova palavra-passe).
@@ -117,6 +120,8 @@ model AuthToken {
   tokenHash String        @unique
   expiresAt DateTime
   usedAt    DateTime?
+  /// EMAIL_CHANGE: o e-mail novo, que só passa a valer quando o link enviado para lá é aberto.
+  newEmail  String?
   createdAt DateTime      @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -200,7 +205,7 @@ model Academy {
   /// Posição no ranking geral; nulo = sem atletas em eventos publicados.
   rank         Int?
 
-  affiliation Affiliation?     @relation(fields: [affiliationId], references: [id])
+  affiliation Affiliation?        @relation(fields: [affiliationId], references: [id])
   athletes    AthleteProfile[]
   federations FederationAcademy[]
 
@@ -216,12 +221,16 @@ model Affiliation {
 }
 
 model Organizer {
-  id   String @id @default(cuid())
-  name String
-  slug String @unique
+  id             String  @id @default(cuid())
+  name           String
+  slug           String  @unique
   /// Conta para onde a Camps transfere o saldo das inscrições de cada evento.
-  payoutHolder String?
-  payoutIban   String?
+  payoutHolder   String?
+  payoutIban     String?
+  /// Dados para as faturas da taxa da Camps.
+  billingName    String?
+  billingNif     String?
+  billingAddress String?
 
   members     OrganizerMember[]
   events      Event[]
@@ -269,17 +278,17 @@ model Event {
   platformFeeCents     Int         @default(50000)
   createdAt            DateTime    @default(now())
 
-  organizer     Organizer      @relation(fields: [organizerId], references: [id])
-  divisions     Division[]
-  coupons       Coupon[]
-  registrations Registration[]
-  mats          Mat[]
-  payouts       Payout[]
+  organizer          Organizer      @relation(fields: [organizerId], references: [id])
+  divisions          Division[]
+  coupons            Coupon[]
+  registrations      Registration[]
+  mats               Mat[]
+  payouts            Payout[]
   /// Federação sob a qual o evento decorre (conta para o ranking dela e pode exigir filiação).
-  federationId         String?
+  federationId       String?
   /// Só atletas com filiação individual ativa nessa federação se podem inscrever (plano Premium).
-  requiresMembership   Boolean     @default(false)
-  federation    Federation?    @relation(fields: [federationId], references: [id])
+  requiresMembership Boolean        @default(false)
+  federation         Federation?    @relation(fields: [federationId], references: [id])
 
   @@index([status, startsAt])
   @@index([status, paidRegistrations])
@@ -367,20 +376,20 @@ model Registration {
 }
 
 model Payment {
-  id             String          @id @default(cuid())
-  registrationId String
-  provider       PaymentProvider
+  id                String          @id @default(cuid())
+  registrationId    String
+  provider          PaymentProvider
   /// Identificador da transação no provedor (transação GPO, ordem PayPal).
-  providerRef    String?
+  providerRef       String?
   /// Valor da inscrição, na moeda do evento.
-  amountCents    Int
+  amountCents       Int
   /// O que foi de facto cobrado no provedor: o PayPal não aceita AOA e cobra noutra moeda.
-  chargeCurrency    String       @db.Char(3)
+  chargeCurrency    String          @db.Char(3)
   chargeAmountCents Int
-  status         PaymentStatus   @default(PENDING)
-  failureReason  String?
-  createdAt      DateTime        @default(now())
-  settledAt      DateTime?
+  status            PaymentStatus   @default(PENDING)
+  failureReason     String?
+  createdAt         DateTime        @default(now())
+  settledAt         DateTime?
 
   registration Registration @relation(fields: [registrationId], references: [id])
   refund       Refund?
@@ -398,9 +407,9 @@ model Payout {
   federationId String?
   amountCents  Int
   /// Referência da transferência bancária (número de operação).
-  reference   String
-  paidAt      DateTime @default(now())
-  recordedBy  String
+  reference    String
+  paidAt       DateTime @default(now())
+  recordedBy   String
 
   event      Event?      @relation(fields: [eventId], references: [id])
   federation Federation? @relation(fields: [federationId], references: [id])
@@ -442,15 +451,15 @@ model WeighIn {
 
 /// Área de luta.
 model Mat {
-  id        String @id @default(cuid())
-  eventId   String
-  name      String
-  sortOrder Int    @default(0)
+  id             String  @id @default(cuid())
+  eventId        String
+  name           String
+  sortOrder      Int     @default(0)
   /// Luta que está agora no placar desta área; é o que o ecrã de TV e a sobreposição mostram.
   currentMatchId String? @unique
   /// Endereço da transmissão (YouTube ou Facebook) desta área.
-  streamUrl String?
-  isLive    Boolean @default(false)
+  streamUrl      String?
+  isLive         Boolean @default(false)
 
   event        Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
   matches      Match[] @relation("MatMatches")
@@ -472,23 +481,23 @@ model Bracket {
 }
 
 model Match {
-  id        String      @id @default(cuid())
-  bracketId String
+  id             String      @id @default(cuid())
+  bracketId      String
   /// Chave estável gerada pelo motor de chaves, ex.: "R1-M3", "BRONZE".
-  key       String
-  round     Int
-  position  Int
-  redId     String?
-  blueId    String?
-  winnerId  String?
-  status    MatchStatus @default(PENDING)
-  method    String?
-  redScore  Int         @default(0)
-  blueScore Int         @default(0)
-  redAdvantages  Int    @default(0)
-  blueAdvantages Int    @default(0)
-  redPenalties   Int    @default(0)
-  bluePenalties  Int    @default(0)
+  key            String
+  round          Int
+  position       Int
+  redId          String?
+  blueId         String?
+  winnerId       String?
+  status         MatchStatus @default(PENDING)
+  method         String?
+  redScore       Int         @default(0)
+  blueScore      Int         @default(0)
+  redAdvantages  Int         @default(0)
+  blueAdvantages Int         @default(0)
+  redPenalties   Int         @default(0)
+  bluePenalties  Int         @default(0)
 
   /// Cronómetro do placar. Parado: `clockRemainingMs` é o tempo que falta.
   /// A correr: falta `clockRemainingMs` menos o que passou desde `clockStartedAt`.
@@ -507,12 +516,12 @@ model Match {
   scheduledAt DateTime?
   finishedAt  DateTime?
 
-  bracket Bracket       @relation(fields: [bracketId], references: [id], onDelete: Cascade)
-  red     Registration? @relation("Red", fields: [redId], references: [id])
-  blue    Registration? @relation("Blue", fields: [blueId], references: [id])
-  winner  Registration? @relation("Winner", fields: [winnerId], references: [id])
-  mat     Mat?          @relation("MatMatches", fields: [matId], references: [id])
-  currentOnMat Mat?     @relation("CurrentMatch")
+  bracket      Bracket       @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+  red          Registration? @relation("Red", fields: [redId], references: [id])
+  blue         Registration? @relation("Blue", fields: [blueId], references: [id])
+  winner       Registration? @relation("Winner", fields: [winnerId], references: [id])
+  mat          Mat?          @relation("MatMatches", fields: [matId], references: [id])
+  currentOnMat Mat?          @relation("CurrentMatch")
 
   @@unique([bracketId, key])
   @@index([matId, sequence])
@@ -536,28 +545,33 @@ model Placement {
 /// Federação, liga ou associação com página própria (/f/<slug>), à semelhança das plataformas de
 /// federação do Smoothcomp. Funciona com uma assinatura anual (plano) ativada pela Camps.
 model Federation {
-  id          String          @id @default(cuid())
-  name        String
-  slug        String          @unique
-  sport       String
-  description String?
+  id             String          @id @default(cuid())
+  name           String
+  slug           String          @unique
+  sport          String
+  description    String?
   /// Cor da marca (#rrggbb) usada no cabeçalho da página pública.
-  color       String          @default("#d21f2b")
-  plan        FederationPlan?
+  color          String          @default("#d21f2b")
+  plan           FederationPlan?
   /// Até quando o plano está pago; sem data ou no passado, a federação está inativa.
-  planExpiresAt DateTime?
-  payoutHolder String?
-  payoutIban   String?
-  createdAt   DateTime        @default(now())
+  planExpiresAt  DateTime?
+  payoutHolder   String?
+  payoutIban     String?
+  /// Dados para as faturas da assinatura.
+  billingName    String?
+  billingNif     String?
+  billingAddress String?
+  createdAt      DateTime        @default(now())
 
-  members     FederationMember[]
-  organizers  FederationOrganizer[]
-  academies   FederationAcademy[]
-  plans       MembershipPlan[]
-  memberships Membership[]
-  posts       FederationPost[]
-  events      Event[]
-  payouts     Payout[]
+  members      FederationMember[]
+  organizers   FederationOrganizer[]
+  academies    FederationAcademy[]
+  plans        MembershipPlan[]
+  memberships  Membership[]
+  posts        FederationPost[]
+  events       Event[]
+  payouts      Payout[]
+  planPayments FederationPlanPayment[]
 }
 
 model FederationMember {
@@ -661,7 +675,9 @@ model MembershipPayment {
   @@index([status, createdAt])
 }
 
-/** Devolução total de uma quota de filiação, pedida pela federação. Mesmas regras de Refund. */
+/**
+ * Devolução total de uma quota de filiação, pedida pela federação. Mesmas regras de Refund.
+ */
 model MembershipRefund {
   id            String       @id @default(cuid())
   paymentId     String       @unique
@@ -692,4 +708,90 @@ model FederationPost {
   federation Federation @relation(fields: [federationId], references: [id], onDelete: Cascade)
 
   @@index([federationId, publishedAt])
+}
+
+/// Pagamento online da assinatura anual do Plano Federação (Básico ou Premium). Quando é pago,
+/// o plano fica ativo (ou é prolongado) por 12 meses e sai a fatura.
+model FederationPlanPayment {
+  id                String          @id @default(cuid())
+  federationId      String
+  plan              FederationPlan
+  months            Int             @default(12)
+  paidById          String
+  provider          PaymentProvider
+  providerRef       String?
+  amountCents       Int
+  chargeCurrency    String          @db.Char(3)
+  chargeAmountCents Int
+  status            PaymentStatus   @default(PENDING)
+  failureReason     String?
+  createdAt         DateTime        @default(now())
+  settledAt         DateTime?
+
+  federation Federation @relation(fields: [federationId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerRef])
+  @@index([federationId, status])
+  @@index([status, createdAt])
+}
+
+enum InvoiceKind {
+  /// Taxa por atleta confirmado num evento.
+  PLATFORM_FEE
+  /// Assinatura anual do Plano Federação.
+  FEDERATION_PLAN
+}
+
+/// Fatura emitida pela Camps aos organizadores e às federações. A numeração é sequencial e sem
+/// falhas dentro de cada série (InvoiceSeries). Com um software de faturação certificado ligado
+/// (src/server/invoicing), o número e o PDF oficiais vêm dele.
+model Invoice {
+  id              String      @id @default(cuid())
+  series          String
+  number          Int
+  kind            InvoiceKind
+  issuedAt        DateTime    @default(now())
+  customerName    String
+  customerNif     String?
+  customerAddress String?
+  customerEmail   String
+  organizerId     String?
+  eventId         String?
+  federationId    String?
+  /// Linhas: [{ description, quantity, unitCents, totalCents }]
+  lines           Json
+  netCents        Int
+  /// Taxa de IVA em pontos base (1400 = 14 %).
+  vatRateBp       Int
+  vatCents        Int
+  totalCents      Int
+  currency        String      @default("AOA") @db.Char(3)
+  /// "internal" (documento interno) ou o software certificado que emitiu a fatura.
+  provider        String      @default("internal")
+  certified       Boolean     @default(false)
+  externalNumber  String?
+  pdfUrl          String?
+  createdAt       DateTime    @default(now())
+
+  @@unique([series, number])
+  @@index([eventId, kind])
+  @@index([federationId])
+  @@index([organizerId])
+}
+
+/// Próximo número de cada série de faturas (uma linha por série e ano).
+model InvoiceSeries {
+  series String @id
+  last   Int    @default(0)
+}
+
+/// Avisos já enviados (lembrete do evento, chaves publicadas, resultados), para nunca sair o
+/// mesmo duas vezes, mesmo com vários servidores ou tarefas repetidas.
+model NotificationLog {
+  id        String   @id @default(cuid())
+  kind      String
+  key       String
+  createdAt DateTime @default(now())
+
+  @@unique([kind, key])
 }

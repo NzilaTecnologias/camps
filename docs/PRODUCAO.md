@@ -195,5 +195,6 @@ O `Dockerfile` também serve em plataformas como Railway, Render ou Fly.io:
 - [ ] Mapa de eventos com os mosaicos do fornecedor contratado
 - [ ] Um erro de teste chega ao Sentry
 - [ ] Cópia de segurança criada em `deploy/backups/` e copiada para fora do servidor; uma restauração testada
-- [ ] Dados da empresa preenchidos em `src/lib/legal.ts`; Termos e Política revistos por um advogado
+- [ ] Dados da empresa preenchidos em `src/lib/legal.ts` (aparecem também nas faturas); Termos e Política revistos por um advogado
+- [ ] Faturas: taxa de IVA e regime confirmados com o contabilista (`INVOICE_VAT_PERCENT`); programa de faturação certificado pela AGT ligado (`INVOICING_PROVIDER`) ou faturas internas lançadas nele à mão
 - [ ] Monitor de disponibilidade a vigiar `/api/health`

@@ -7,8 +7,8 @@ export function PlanGate({ allowed, plan, children }: { allowed: boolean; plan: 
   return (
     <Notice>
       {plan === "Premium"
-        ? "Esta secção faz parte do plano Premium. Peça à Camps para mudar de plano."
-        : "Esta secção precisa de um plano ativo. A Camps ativa-o depois do pagamento da assinatura anual."}
+        ? "Esta secção faz parte do plano Premium. Pode mudar de plano em Plano e faturas."
+        : "Esta secção precisa de um plano ativo. Pode pagá-lo online em Plano e faturas."}
     </Notice>
   );
 }

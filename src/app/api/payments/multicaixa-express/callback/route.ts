@@ -1,21 +1,24 @@
+import { refreshPlanByProviderRef } from "@/server/federation-plan";
 import { refreshMembershipByProviderRef, refreshMembershipRefundByProviderRef } from "@/server/memberships";
 import { refreshRefundByProviderRef } from "@/server/refunds";
 import { refreshByProviderRef } from "@/server/registrations";
 
 // A ProxyPay faz POST da transação quando ela termina. O pedido não vem assinado, por isso
 // o conteúdo serve só para saber qual transação consultar; o estado vem da consulta à API.
-// A transação tanto pode ser um pagamento como uma devolução.
+// A transação pode ser uma inscrição, uma quota de filiação, um Plano Federação ou uma devolução.
 export async function POST(request: Request) {
   const body: unknown = await request.json().catch(() => null);
   const id = body && typeof body === "object" && "id" in body ? body.id : null;
   if (typeof id === "string" || typeof id === "number") {
-    const payment = await refreshByProviderRef("MULTICAIXA_EXPRESS", String(id));
-    // Pode ser também uma quota de filiação ou uma devolução.
-    if (!payment && !(await refreshMembershipByProviderRef("MULTICAIXA_EXPRESS", String(id)))) {
-      if (!(await refreshMembershipRefundByProviderRef("MULTICAIXA_EXPRESS", String(id)))) {
-        await refreshRefundByProviderRef("MULTICAIXA_EXPRESS", String(id));
-      }
-    }
+    const ref = String(id);
+    const lookups = [
+      refreshByProviderRef,
+      refreshMembershipByProviderRef,
+      refreshPlanByProviderRef,
+      refreshMembershipRefundByProviderRef,
+      refreshRefundByProviderRef,
+    ];
+    for (const lookup of lookups) if (await lookup("MULTICAIXA_EXPRESS", ref)) break;
   }
   return new Response(null, { status: 204 });
 }

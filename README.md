@@ -44,9 +44,17 @@ Inspirado nos créditos do Smoothcomp: atletas e público usam a Camps de graça
 
 As inscrições pagas online entram na conta da Camps (Multicaixa Express / PayPal). A taxa é descontada delas e o saldo é transferido para o IBAN da organização: os administradores (`PLATFORM_ADMIN_EMAILS`) veem a fila em `/admin/payouts` e registam cada transferência com a referência bancária. Eventos só com inscrições manuais ou gratuitas ficam com saldo negativo (em dívida à Camps).
 
+### Faturas
+
+A Camps emite faturas-recibo da taxa por atleta (a cada repasse, com os atletas confirmados desde a fatura anterior, ou a pedido do administrador com "Faturar a taxa agora") e do Plano Federação (a cada pagamento). Ficam no painel do cliente (Faturação e repasses do evento; Plano e faturas da federação), seguem por e-mail e abrem em `/invoices/<id>` para imprimir ou guardar em PDF. O cliente indica o nome, NIF e morada para as faturas.
+
+- Numeração sequencial e sem falhas por série e ano (`INVOICE_SERIES_PREFIX`, ex.: FR CAMPS2026/12), atómica mesmo com vários servidores.
+- Preços com IVA incluído (`INVOICE_VAT_PERCENT`, por omissão 14 %): a fatura mostra o líquido e o IVA.
+- **Validade fiscal:** em Angola, as faturas têm de sair de um programa certificado pela AGT. Até haver um ligado, estas são documentos internos (a página di-lo) e servem de base para o lançamento no programa certificado. Para ligar um, acrescenta-se o fornecedor em `src/server/invoicing.ts` (`CERTIFIED_PROVIDERS`) e define-se `INVOICING_PROVIDER`: o número oficial e o PDF passam a vir dele. Confirmar com o contabilista a taxa de IVA e o regime.
+
 ### Plano Federação
 
-Federações e ligas têm uma página própria em `/f/<identificador>` e um painel em `/manage/federations/<id>`. Funciona com uma assinatura anual, ativada por um administrador da Camps em `/admin/federations` depois do pagamento (preços em `FEDERATION_BASIC_KZ` e `FEDERATION_PREMIUM_KZ`):
+Federações e ligas têm uma página própria em `/f/<identificador>` e um painel em `/manage/federations/<id>`. Funciona com uma assinatura anual (preços em `FEDERATION_BASIC_KZ` e `FEDERATION_PREMIUM_KZ`). A federação paga-a online em **Plano e faturas** (Multicaixa Express, PayPal): o plano fica ativo logo, por 12 meses, e renovar antes do fim soma os meses ao que faltava. Quem paga por transferência é ativado à mão por um administrador em `/admin/federations`, que pode emitir a fatura no mesmo passo:
 
 | | Básico | Premium |
 |---|---|---|
@@ -81,7 +89,8 @@ Cada provedor é um ficheiro em `src/server/payments/`; trocar a ProxyPay por ou
 
 - **Registo:** pede a aceitação dos [Termos](/terms) e da [Política de privacidade](/privacy) (data gravada em `User.termsAcceptedAt`) e envia um link para confirmar o e-mail. Até confirmar, a conta entra mas não paga inscrições ou quotas nem cria organizações e eventos, e um aviso no topo permite reenviar o link.
 - **Nova palavra-passe:** "Esqueceu-se da palavra-passe?" no login. O link vale 60 minutos e uma só vez; ao usá-lo, todas as sessões abertas terminam. A resposta é a mesma quer o e-mail exista quer não.
-- **Avisos por e-mail:** inscrição confirmada, inscrição reembolsada, filiação ativa e quota reembolsada.
+- **A minha conta** (`/account`): mudar o nome, o e-mail (confirmado por link enviado ao novo, com aviso ao antigo) e a palavra-passe (termina as sessões dos outros aparelhos); terminar sessões; descarregar os dados em JSON; eliminar a conta (pede a palavra-passe e "ELIMINAR"; apaga os dados pessoais, ficam os pagamentos e os resultados já disputados, sem ligação à conta; não deixa eliminar o único dono de uma organização com eventos nem o único gestor de uma federação).
+- **Avisos por e-mail:** inscrição confirmada, inscrição reembolsada, filiação ativa e quota reembolsada; faturas; e, a quem inscreveu atletas, lembrete 48 h antes do evento, chave publicada e resultado final de cada atleta. Estes três saem pela tarefa de fundo e ficam registados (`NotificationLog`) para nunca se repetirem.
 - **Limites:** no máximo 5 links por hora para o mesmo e-mail e 30 por IP.
 
 Os e-mails saem pela [Resend](https://resend.com) (`RESEND_API_KEY`, `EMAIL_FROM` com domínio verificado, `EMAIL_REPLY_TO` opcional). Cada e-mail é gravado na tabela `EmailOutbox` antes de sair, e a tarefa de fundo volta a tentar os que falharam (até 6 vezes, de 1 minuto a 12 horas). Os links de acesso não ficam guardados depois de enviados. Sem `RESEND_API_KEY`, em desenvolvimento, nada sai: os e-mails aparecem em `/dev/mailbox`.
@@ -104,7 +113,20 @@ Os endereços de TV e de sobreposição são fixos por área: mostram sempre a l
 
 A plataforma **não transporta vídeo**. A transmissão faz-se pelo YouTube ou pelo Facebook: o organizador cola o endereço na área e carrega em "Pôr em direto", e o leitor aparece na página pública do evento. Só são aceites endereços `https` desses dois serviços.
 
-O placar segue o modelo do jiu-jitsu (pontos +2/+3/+4, vantagens, punições); outros desportos ainda não têm regras próprias.
+O placar segue as regras da modalidade do evento (`src/lib/sport-rules.ts`): botões, nomes dos marcadores, durações e formas de vitória.
+
+| Modalidade | Regulamento | Marcadores |
+|---|---|---|
+| Jiu-Jitsu, Grappling | IBJJF | Pontos (+2/+3/+4), vantagens, punições |
+| Judo | IJF | Waza-ari, shido (o 3.º é hansoku-make), até 4 min |
+| Karaté | WKF | Yuko +1, waza-ari +2, ippon +3, senshu, penalizações |
+| Taekwondo | World Taekwondo | +1 a +5, rounds ganhos, gam-jeom (dá 1 ponto ao adversário), 3 rounds |
+| Kickboxing | WAKO | +1/+2/+3, advertências, rounds |
+| Luta | UWW | +1/+2/+4/+5, advertências |
+| Sambo | FIAS | +1/+2/+4, advertências |
+| Boxe, MMA | IBA / regras unificadas | Rounds ganhos (decisão dos juízes), quedas, advertências ou deduções |
+
+O ecrã de controlo avisa quando um atleta chega ao limite de punições da modalidade.
 
 ## Fotografias da página inicial
 
@@ -143,7 +165,7 @@ Em produção, o servidor recusa-se a arrancar com configuração perigosa ou in
 | Comando | O que faz |
 |---|---|
 | `npm test` | Testes unitários (motor de chaves, palavra-passe, pagamentos) |
-| `npm run test:e2e` | Percorre registo, confirmação de e-mail, nova palavra-passe, painel, chave, resultados, inscrição e pagamento pelo HTTP (`scripts/e2e.mjs`, `scripts/e2e-extra.mjs` e `scripts/e2e-auth.mjs`). Precisa do app rodando sem `RESEND_API_KEY` e grava dados de teste no banco; `npm run db:seed` limpa depois |
+| `npm run test:e2e` | Percorre pelo HTTP registo, conta, painel, chaves, placar por modalidade, inscrições, pagamentos, avisos, faturas e Plano Federação (`scripts/e2e.mjs`, `e2e-extra.mjs`, `e2e-auth.mjs` e `e2e-features.mjs`). Precisa do app rodando sem `RESEND_API_KEY` e com `CRON_SECRET` no `.env`; grava dados de teste no banco, e `npm run db:seed` limpa depois |
 | `node scripts/load-test.mjs <url> [clientes] [segundos]` | Teste de carga simples; com `--pg=<DATABASE_URL>` conta as transações no Postgres |
 | `npx tsx scripts/seed-live.ts [eventos] [áreas]` · `node scripts/load-test-live.mjs <origem> <DATABASE_URL>` | Vários eventos em direto e espectadores a seguir os placares (nunca numa base real) |
 | `npx tsx scripts/seed-scale.ts [utilizadores]` | Dados em massa para testes de carga (nunca numa base real) |

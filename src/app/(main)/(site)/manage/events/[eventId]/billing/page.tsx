@@ -7,7 +7,8 @@ import { count, formatDateTime, formatMoney } from "@/lib/format";
 import { formatIban } from "@/lib/statement";
 import { requireUser } from "@/server/auth";
 import { getEventStatement } from "@/server/billing";
-import { updatePayoutDetailsAction } from "../../../event-actions";
+import { BillingDetailsCard, InvoiceTable } from "@/components/manage/invoices";
+import { updateOrganizerBillingAction, updatePayoutDetailsAction } from "../../../event-actions";
 
 function Line({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
@@ -23,7 +24,7 @@ async function Billing({ params }: { params: Promise<{ eventId: string }> }) {
   const user = await requireUser();
   const result = await getEventStatement(user.id, eventId);
   if (!result) return null;
-  const { statement, payouts } = result;
+  const { statement, payouts, invoices, billing } = result;
   const money = (cents: number) => formatMoney(cents, "AOA");
   const owesCamps = statement.balanceCents < 0;
 
@@ -74,6 +75,10 @@ async function Billing({ params }: { params: Promise<{ eventId: string }> }) {
             </DataTable>
           )}
 
+          <h3 className="mt-8 mb-3 font-display text-xl font-bold uppercase leading-none">Faturas da Camps</h3>
+          <InvoiceTable invoices={invoices} />
+          <p className="mt-2 text-xs text-muted">A taxa dos atletas confirmados é faturada a cada transferência.</p>
+
           <div className="mt-6">
             <Notice>
               Um atleta conta quando a inscrição fica confirmada (paga, gratuita ou inscrita à mão) e continua a contar
@@ -82,31 +87,38 @@ async function Billing({ params }: { params: Promise<{ eventId: string }> }) {
           </div>
         </section>
 
-        <Card className="p-5">
-          <h3 className="mb-1 font-display text-xl font-bold uppercase leading-none">Conta para repasses</h3>
-          <p className="mb-4 text-sm text-muted">
-            Da organização {statement.organizer.name}; vale para todos os eventos dela.
-          </p>
-          {statement.organizer.payoutIban && (
-            <p className="mb-4 rounded-lg bg-surface-2 px-3 py-2 font-mono text-sm">{formatIban(statement.organizer.payoutIban)}</p>
-          )}
-          <ActionForm
-            action={updatePayoutDetailsAction.bind(null, statement.organizer.id)}
-            submitLabel={statement.organizer.payoutIban ? "Atualizar conta" : "Guardar conta"}
-            submitVariant="secondary"
-            className="flex flex-col gap-4"
-          >
-            <Field label="Titular" name="holder" defaultValue={statement.organizer.payoutHolder ?? ""} maxLength={120} required />
-            <Field
-              label="IBAN"
-              name="iban"
-              defaultValue={statement.organizer.payoutIban ? formatIban(statement.organizer.payoutIban) : ""}
-              placeholder="AO06 0000 0000 0000 0000 0000 0"
-              autoComplete="off"
-              required
-            />
-          </ActionForm>
-        </Card>
+        <div className="grid gap-6">
+          <Card className="p-5">
+            <h3 className="mb-1 font-display text-xl font-bold uppercase leading-none">Conta para repasses</h3>
+            <p className="mb-4 text-sm text-muted">
+              Da organização {statement.organizer.name}; vale para todos os eventos dela.
+            </p>
+            {statement.organizer.payoutIban && (
+              <p className="mb-4 rounded-lg bg-surface-2 px-3 py-2 font-mono text-sm">{formatIban(statement.organizer.payoutIban)}</p>
+            )}
+            <ActionForm
+              action={updatePayoutDetailsAction.bind(null, statement.organizer.id)}
+              submitLabel={statement.organizer.payoutIban ? "Atualizar conta" : "Guardar conta"}
+              submitVariant="secondary"
+              className="flex flex-col gap-4"
+            >
+              <Field label="Titular" name="holder" defaultValue={statement.organizer.payoutHolder ?? ""} maxLength={120} required />
+              <Field
+                label="IBAN"
+                name="iban"
+                defaultValue={statement.organizer.payoutIban ? formatIban(statement.organizer.payoutIban) : ""}
+                placeholder="AO06 0000 0000 0000 0000 0000 0"
+                autoComplete="off"
+                required
+              />
+            </ActionForm>
+          </Card>
+          <BillingDetailsCard
+            action={updateOrganizerBillingAction.bind(null, statement.organizer.id)}
+            billing={billing}
+            owner={statement.organizer.name}
+          />
+        </div>
       </div>
     </>
   );

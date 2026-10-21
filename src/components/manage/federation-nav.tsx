@@ -23,7 +23,10 @@ const FEDERATION_SECTIONS: NavSection[] = [
   },
   {
     title: "Dinheiro",
-    items: [{ segment: "payouts", label: "Quotas e repasses", icon: "wallet" }],
+    items: [
+      { segment: "billing", label: "Plano e faturas", icon: "ticket" },
+      { segment: "payouts", label: "Quotas e repasses", icon: "wallet" },
+    ],
   },
 ];
 

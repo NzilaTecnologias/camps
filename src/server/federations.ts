@@ -8,7 +8,8 @@ import { UTC_OFFSET } from "@/lib/format";
 import { slugify } from "@/lib/slug";
 import { SPORT_NAMES } from "@/lib/sports";
 import { computeStatement, normalizeAngolanIban } from "@/lib/statement";
-import { isPlatformAdmin } from "./billing-config";
+import { federationPlanPriceCents, isPlatformAdmin } from "./billing-config";
+import { afterIssue, billingDetails, invoiceFederationPlan, type BillingDetailsInput } from "./invoicing";
 
 // Plano Federação: página própria, organizadores e academias filiadas, filiação individual paga,
 // ranking e notícias. As funções de gestão recebem o utilizador e só mexem em federações de que
@@ -57,11 +58,11 @@ export const getFederationWorkspace = cache(async (userId: string, federationId:
   return prisma.federation.findFirst({ where: { id: federationId, members: { some: { userId } } } });
 });
 
-async function requireFederation(userId: string, federationId: string, needs?: "active" | "premium") {
+export async function requireFederation(userId: string, federationId: string, needs?: "active" | "premium") {
   const federation = await getFederationWorkspace(userId, federationId);
   if (!federation) throw new UserError("Federação não encontrada");
   if (needs === "active" && !planActive(federation)) {
-    throw new UserError("Esta funcionalidade precisa de um plano ativo. Fale com a Camps para o ativar.");
+    throw new UserError("Esta funcionalidade precisa de um plano ativo. Pode pagá-lo online em Plano e faturas.");
   }
   if (needs === "premium" && !premiumActive(federation)) {
     throw new UserError("Esta funcionalidade faz parte do plano Premium");
@@ -277,8 +278,17 @@ export async function listFederationsAdmin(adminEmail: string) {
   );
 }
 
-/** Ativa ou renova o plano depois de a federação pagar a assinatura (fatura e transferência). */
-export async function activateFederationPlan(adminEmail: string, federationId: string, plan: string, untilDay: string) {
+/**
+ * Ativa ou renova o plano à mão, para quem paga por transferência. Com `invoice`, emite a fatura
+ * de 12 meses do plano ao preço em vigor (quem paga online já recebe a sua sozinho).
+ */
+export async function activateFederationPlan(
+  adminEmail: string,
+  federationId: string,
+  plan: string,
+  untilDay: string,
+  invoice = false,
+) {
   requireAdmin(adminEmail);
   if (plan !== "BASIC" && plan !== "PREMIUM" && plan !== "NONE") throw new UserError("Escolha o plano");
   const federation = await prisma.federation.findUnique({ where: { id: federationId } });
@@ -288,11 +298,26 @@ export async function activateFederationPlan(adminEmail: string, federationId: s
     return federation.slug;
   }
   const until = parseDay(untilDay, "a validade do plano");
-  await prisma.federation.update({
-    where: { id: federationId },
-    data: { plan: plan as FederationPlanName, planExpiresAt: until },
+  const chosen = plan as FederationPlanName;
+  const issued = await prisma.$transaction(async (tx) => {
+    await tx.federation.update({ where: { id: federationId }, data: { plan: chosen, planExpiresAt: until } });
+    if (!invoice) return null;
+    return invoiceFederationPlan(tx, {
+      federationId,
+      plan: chosen,
+      months: 12,
+      amountCents: federationPlanPriceCents(chosen),
+      paidVia: "Pago por transferência bancária",
+    });
   });
+  await afterIssue(issued);
   return federation.slug;
+}
+
+/** Nome, NIF e morada da federação para as faturas da assinatura. */
+export async function updateFederationBilling(userId: string, federationId: string, input: BillingDetailsInput) {
+  const federation = await requireFederation(userId, federationId);
+  await prisma.federation.update({ where: { id: federation.id }, data: billingDetails(input) });
 }
 
 export async function recordFederationPayout(adminEmail: string, federationId: string, amount: string, reference: string) {

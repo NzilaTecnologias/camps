@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { runAction, text, type ActionState } from "@/lib/action-state";
 import { safeNext } from "@/lib/safe-next";
 import {
+  confirmEmailChange,
   logIn,
   logOut,
   requestPasswordReset,
@@ -61,6 +62,13 @@ export async function resetPasswordAction(_state: ActionState, formData: FormDat
       String(formData.get("confirmation") ?? ""),
     );
     redirect("/registrations");
+  });
+}
+
+export async function confirmEmailChangeAction(_state: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    await confirmEmailChange(text(formData, "token"));
+    redirect("/confirm-email-change?done=1");
   });
 }
 

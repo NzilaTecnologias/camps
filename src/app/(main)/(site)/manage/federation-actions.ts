@@ -3,7 +3,9 @@
 import { refresh, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { runAction, text, type ActionState } from "@/lib/action-state";
-import { requireUser } from "@/server/auth";
+import { requireUser, requireVerifiedUser } from "@/server/auth";
+import { simulatePlanPayment, startPlanPayment } from "@/server/federation-plan";
+import { enforceLimit } from "@/server/limits";
 import {
   addFederationOrganizer,
   affiliateAcademy,
@@ -15,6 +17,7 @@ import {
   removeAcademy,
   removeFederationOrganizer,
   setMembershipPlanActive,
+  updateFederationBilling,
   updateFederationPayoutDetails,
   updateFederationSettings,
 } from "@/server/federations";
@@ -136,6 +139,40 @@ export async function refundMembershipAction(paymentId: string, _state: ActionSt
         manual: text(formData, "manual") === "1",
       }),
     );
+    refresh();
+  });
+}
+
+export async function payFederationPlanAction(federationId: string, _state: ActionState, formData: FormData) {
+  return runAction(async () => {
+    const user = await requireVerifiedUser();
+    await enforceLimit("payment", user.id);
+    const started = await startPlanPayment(user.id, federationId, {
+      plan: text(formData, "plan"),
+      provider: text(formData, "provider"),
+      mobile: text(formData, "mobile"),
+    });
+    if (started.redirectUrl) redirect(started.redirectUrl);
+    refresh();
+  });
+}
+
+export async function simulatePlanPaymentAction(paymentId: string, approve: boolean) {
+  return runAction(async () => {
+    const user = await requireUser();
+    updateTag(federationTag(await simulatePlanPayment(user.id, paymentId, approve)));
+    refresh();
+  });
+}
+
+export async function updateFederationBillingAction(federationId: string, _state: ActionState, formData: FormData) {
+  return runAction(async () => {
+    const user = await requireUser();
+    await updateFederationBilling(user.id, federationId, {
+      name: text(formData, "billingName"),
+      nif: text(formData, "billingNif"),
+      address: text(formData, "billingAddress"),
+    });
     refresh();
   });
 }

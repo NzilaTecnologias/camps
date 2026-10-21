@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { UserError } from "@/lib/errors";
 import { computeStatement, normalizeAngolanIban, type Statement } from "@/lib/statement";
 import { isPlatformAdmin } from "./billing-config";
+import { billingDetails, invoiceEventFee, listEventInvoices, type BillingDetailsInput } from "./invoicing";
 import { memberOf } from "./manage";
 
 // Faturação entre a Camps e os organizadores, ao estilo dos créditos do Smoothcomp: a Camps cobra
@@ -78,8 +79,15 @@ export async function getEventStatement(userId: string, eventId: string) {
   const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId) }, select: { id: true } });
   if (!event) return null;
   const [statement] = await statements(Prisma.sql`e.id = ${event.id}`, 1);
-  const payouts = await prisma.payout.findMany({ where: { eventId: event.id }, orderBy: { paidAt: "desc" } });
-  return { statement, payouts };
+  const [payouts, invoices, billing] = await Promise.all([
+    prisma.payout.findMany({ where: { eventId: event.id }, orderBy: { paidAt: "desc" } }),
+    listEventInvoices(event.id),
+    prisma.organizer.findUniqueOrThrow({
+      where: { id: statement.organizer.id },
+      select: { billingName: true, billingNif: true, billingAddress: true },
+    }),
+  ]);
+  return { statement, payouts, invoices, billing };
 }
 
 /** Conta onde o organizador recebe os repasses. */
@@ -115,4 +123,19 @@ export async function recordPayout(adminEmail: string, eventId: string, amount: 
   if (ref.length < 3 || ref.length > 80) throw new UserError("Indique a referência da transferência");
   if (!statement.organizer.payoutIban) throw new UserError("O organizador ainda não indicou o IBAN");
   await prisma.payout.create({ data: { eventId, amountCents, reference: ref, recordedBy: adminEmail } });
+  // A taxa dos atletas confirmados até agora sai faturada com o repasse.
+  await invoiceEventFee(eventId);
+}
+
+/** O administrador fatura a taxa sem repasse (ex.: evento só com inscrições pagas em mão). */
+export async function invoiceEventFeeNow(adminEmail: string, eventId: string): Promise<boolean> {
+  requireAdmin(adminEmail);
+  return (await invoiceEventFee(eventId)) !== null;
+}
+
+/** Nome, NIF e morada da organização para as faturas da taxa. */
+export async function updateOrganizerBilling(userId: string, organizerId: string, input: BillingDetailsInput) {
+  const membership = await prisma.organizerMember.findUnique({ where: { organizerId_userId: { organizerId, userId } } });
+  if (!membership) throw new UserError("Organização não encontrada");
+  await prisma.organizer.update({ where: { id: organizerId }, data: billingDetails(input) });
 }

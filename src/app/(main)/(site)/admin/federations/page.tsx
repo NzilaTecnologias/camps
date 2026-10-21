@@ -80,6 +80,10 @@ async function Federations() {
                         className={`${inputClass} mt-1 block`}
                       />
                     </label>
+                    <label className="flex items-center gap-1.5 pb-1.5 text-xs text-muted">
+                      <input type="checkbox" name="invoice" className="h-4 w-4" />
+                      Emitir fatura (pago por transferência)
+                    </label>
                     <button type="submit" className={buttonClass("primary", "sm")}>
                       {active ? "Atualizar plano" : "Ativar plano"}
                     </button>
