@@ -77,6 +77,7 @@ const OTHER_SPORTS = ["Judo", "Kickboxing", "Luta", "Boxe", "MMA", "Sambo"];
 
 const BRACKET_FEATURES = [
   { title: "Eliminação simples", text: "Quem perde sai; quem vence avança sozinho na chave." },
+  { title: "Dupla eliminação", text: "Só sai quem perde duas vezes: os vencidos têm uma segunda chave." },
   { title: "Disputa de 3.º lugar", text: "Os perdedores das semifinais lutam pelo bronze." },
   { title: "Todos contra todos", text: "Para categorias pequenas: cada atleta enfrenta os outros." },
   { title: "Cabeças de chave", text: "Os favoritos só se cruzam nas rondas finais." },
@@ -93,15 +94,24 @@ const PACKAGE = [
       "Multicaixa Express e PayPal",
       "Categorias gratuitas ou pagas, em kwanzas",
       "Inscrição manual pelo organizador",
+      "Desconto antecipado, cupões e reembolsos",
     ],
   },
   {
     title: "Chaves",
     items: [
       "Geração automática a partir dos inscritos pagos",
-      "Eliminação simples e todos contra todos",
+      "Eliminação simples, dupla eliminação e todos contra todos",
       "Cabeças de chave e byes",
       "Separação de atletas da mesma academia",
+    ],
+  },
+  {
+    title: "Dia da prova",
+    items: [
+      "Pesagem: quem passa do limite sai da chave",
+      "Programação das lutas por área, com horas previstas",
+      "Programa público para atletas e treinadores",
     ],
   },
   {
@@ -127,8 +137,18 @@ const PACKAGE = [
     items: [
       "Painel com eventos, categorias e inscritos",
       "Várias organizações por conta",
+      "Equipa com papéis: dono, gestor e mesário",
       "Rascunho e publicação do evento",
       "Limite de idade e de peso por categoria",
+    ],
+  },
+  {
+    title: "Federações",
+    items: [
+      "Página própria da federação",
+      "Filiação de academias e de atletas, paga online",
+      "Eventos só para filiados",
+      "Ranking nacional de atletas e academias",
     ],
   },
 ];
@@ -141,11 +161,10 @@ const LIVE_POINTS = [
 ];
 
 const ROADMAP = [
-  "Pesagem e check-in",
-  "Programação por áreas de luta",
-  "Cupões e reembolsos",
-  "Dupla eliminação e equipas",
-  "Ranking e federações",
+  "Check-in no dia da prova",
+  "Competições por equipas",
+  "Transmissão de vídeo na própria Camps",
+  "Gestão de academias",
 ];
 
 const PAYMENT_POINTS = [

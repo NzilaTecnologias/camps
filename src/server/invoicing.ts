@@ -5,6 +5,7 @@ import { UserError } from "@/lib/errors";
 import { PLAN_LABEL } from "@/lib/federation-rules";
 import { formatMoney } from "@/lib/format";
 import { invoiceNumber, invoiceTotals, line, normalizeNif, type InvoiceLine } from "@/lib/invoice";
+import { rolesWith } from "@/lib/organizer-permissions";
 import { deliverEmail, enqueueEmail } from "./email";
 import { appUrl } from "./payments";
 
@@ -222,7 +223,9 @@ export async function getInvoiceFor(user: { id: string; email: string }, invoice
   const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
   if (!invoice) return null;
   if (invoice.organizerId) {
-    const member = await prisma.organizerMember.count({ where: { organizerId: invoice.organizerId, userId: user.id } });
+    const member = await prisma.organizerMember.count({
+      where: { organizerId: invoice.organizerId, userId: user.id, role: { in: rolesWith("money") } },
+    });
     if (member) return invoice;
   }
   if (invoice.federationId) {

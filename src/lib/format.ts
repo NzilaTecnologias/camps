@@ -36,6 +36,24 @@ export function formatDateTime(date: Date) {
   return dateFormat(LOCALE, { dateStyle: "short", timeStyle: "short", timeZone: TIME_ZONE }).format(date);
 }
 
+/** "14:30" no fuso de Luanda. */
+export function formatTime(date: Date) {
+  // h23: meia-noite é 00:00 (com hour12: false alguns motores escrevem 24:00).
+  return dateFormat(LOCALE, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: TIME_ZONE }).format(date);
+}
+
+/** Valor de um <input type="datetime-local"> no fuso de Luanda: "2026-11-20T09:00". */
+export function toDateTimeInput(date: Date | null): string {
+  return date ? `${toDateInput(date)}T${formatTime(date)}` : "";
+}
+
+/** Lê um <input type="datetime-local"> como hora de Luanda; nulo se não for válido. */
+export function parseDateTimeInput(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}:00${UTC_OFFSET}`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export const EVENT_STATUS_LABEL = {
   DRAFT: "Rascunho",
   PUBLISHED: "Publicado",
@@ -44,6 +62,7 @@ export const EVENT_STATUS_LABEL = {
 
 export const BRACKET_TYPE_LABEL = {
   SINGLE_ELIMINATION: "Eliminação simples",
+  DOUBLE_ELIMINATION: "Dupla eliminação",
   ROUND_ROBIN: "Todos contra todos",
 } as const;
 

@@ -29,13 +29,13 @@ export async function findUsableCoupon(eventId: string, rawCode: string, now = n
 export async function listCoupons(userId: string, eventId: string) {
   const [coupons, applied] = await Promise.all([
     prisma.coupon.findMany({
-      where: { eventId, event: memberOf(userId) },
+      where: { eventId, event: memberOf(userId, "event") },
       orderBy: [{ active: "desc" }, { createdAt: "desc" }],
       include: usesCount,
     }),
     prisma.registration.groupBy({
       by: ["couponId"],
-      where: { eventId, event: memberOf(userId), couponId: { not: null } },
+      where: { eventId, event: memberOf(userId, "event"), couponId: { not: null } },
       _count: true,
     }),
   ]);
@@ -46,8 +46,8 @@ export async function listCoupons(userId: string, eventId: string) {
 }
 
 async function requireEvent(userId: string, eventId: string) {
-  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId) } });
-  if (!event) throw new UserError("Evento não encontrado");
+  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId, "event") } });
+  if (!event) throw new UserError("Evento não encontrado ou sem permissão");
   return event;
 }
 
@@ -94,7 +94,7 @@ export async function createCoupon(userId: string, eventId: string, input: Coupo
 }
 
 async function requireCoupon(userId: string, couponId: string) {
-  const coupon = await prisma.coupon.findFirst({ where: { id: couponId, event: memberOf(userId) }, include: usesCount });
+  const coupon = await prisma.coupon.findFirst({ where: { id: couponId, event: memberOf(userId, "event") }, include: usesCount });
   if (!coupon) throw new UserError("Cupão não encontrado");
   return coupon;
 }

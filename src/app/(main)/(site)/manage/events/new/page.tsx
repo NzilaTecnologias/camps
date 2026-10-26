@@ -5,6 +5,7 @@ import { Field, SelectField } from "@/components/field";
 import { BackLink, Card, Empty, PageTitle } from "@/components/ui";
 import { LocationPicker } from "@/components/map/location-picker";
 import { cityCenter } from "@/lib/geo";
+import { canOrganizer } from "@/lib/organizer-permissions";
 import { SPORTS } from "@/lib/sports";
 import { requireUser } from "@/server/auth";
 import { listOrganizers } from "@/server/manage";
@@ -12,7 +13,8 @@ import { createEventAction } from "../../actions";
 
 async function NewEventForm() {
   const user = await requireUser();
-  const organizers = await listOrganizers(user.id);
+  // Só donos e gestores criam eventos; um mesário trabalha nos que já existem.
+  const organizers = (await listOrganizers(user.id)).filter((organizer) => canOrganizer(organizer.members[0].role, "event"));
   if (organizers.length === 0) {
     return (
       <Empty>
@@ -20,7 +22,7 @@ async function NewEventForm() {
         <Link href="/manage" className="font-semibold text-primary hover:underline">
           painel
         </Link>{" "}
-        antes de criar um evento.
+        antes de criar um evento, ou peça ao dono da sua organização o papel de gestor.
       </Empty>
     );
   }

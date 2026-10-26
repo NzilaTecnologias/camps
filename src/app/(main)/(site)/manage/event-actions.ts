@@ -16,6 +16,16 @@ import {
 } from "@/server/organizer";
 import { updateOrganizerBilling, updatePayoutDetails } from "@/server/billing";
 import { cancelRegistration, requestRefund } from "@/server/refunds";
+import { assignDivisionMats, balanceDivisionMats, generateSchedule, updateScheduleSettings } from "@/server/schedule";
+
+/** Campos com o mesmo prefixo (ex.: "mat-<categoria>"), pelo id que vem a seguir. */
+function fieldsByPrefix(formData: FormData, prefix: string): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const [name, value] of formData) {
+    if (name.startsWith(prefix) && typeof value === "string") values.set(name.slice(prefix.length), value.trim());
+  }
+  return values;
+}
 
 // Ações das secções do painel de um evento. Cada função do servidor confirma que o
 // utilizador pertence à organização; os ids que chegam aqui vêm do navegador.
@@ -149,6 +159,40 @@ export async function setEventFederationAction(eventId: string, _state: ActionSt
     const user = await requireUser();
     await setEventFederation(user.id, eventId, text(formData, "federationId"), text(formData, "requiresMembership") === "1");
     publicDataChanged({ eventId, events: true, community: true });
+    refresh();
+  });
+}
+
+export async function updateScheduleSettingsAction(eventId: string, _state: ActionState, formData: FormData) {
+  return runAction(async () => {
+    const user = await requireUser();
+    await updateScheduleSettings(user.id, eventId, text(formData, "matchMinutes"), fieldsByPrefix(formData, "startsAt-"));
+    refresh();
+  });
+}
+
+export async function assignDivisionMatsAction(eventId: string, _state: ActionState, formData: FormData) {
+  return runAction(async () => {
+    const user = await requireUser();
+    await assignDivisionMats(user.id, eventId, fieldsByPrefix(formData, "mat-"));
+    refresh();
+  });
+}
+
+export async function balanceDivisionMatsAction(eventId: string) {
+  return runAction(async () => {
+    const user = await requireUser();
+    await balanceDivisionMats(user.id, eventId);
+    refresh();
+  });
+}
+
+export async function generateScheduleAction(eventId: string) {
+  return runAction(async () => {
+    const user = await requireUser();
+    await generateSchedule(user.id, eventId);
+    // As chaves e o programa públicos mostram a área e a hora prevista de cada luta.
+    publicDataChanged({ eventId, live: true });
     refresh();
   });
 }

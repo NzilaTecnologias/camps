@@ -7,6 +7,7 @@ import { EventStatusBadge } from "@/components/status-badges";
 import { Badge, Card, Empty, Icon, LinkButton, PageTitle } from "@/components/ui";
 import { PLAN_LABEL, planActive } from "@/lib/federation-rules";
 import { count, formatDateRange } from "@/lib/format";
+import { ORGANIZER_ROLE_LABEL, canOrganizer } from "@/lib/organizer-permissions";
 import { SPORTS, sportImage } from "@/lib/sports";
 import { listMyFederations } from "@/server/federations";
 import { createFederationAction } from "./federation-actions";
@@ -105,7 +106,14 @@ async function Dashboard() {
                     federação para poder pôr eventos sob ela
                   </p>
                 </div>
-                <span className="text-sm text-muted">{count(organizer.events.length, "evento", "eventos")}</span>
+                <div className="flex flex-wrap items-center justify-end gap-3 text-sm text-muted">
+                  <Badge>{ORGANIZER_ROLE_LABEL[organizer.members[0].role]}</Badge>
+                  <span>{count(organizer.events.length, "evento", "eventos")}</span>
+                  <Link href={`/manage/organizers/${organizer.id}/team`} className="inline-flex items-center gap-1.5 font-semibold text-primary hover:underline">
+                    <Icon name="users" />
+                    Equipa ({organizer._count.members})
+                  </Link>
+                </div>
               </div>
               {organizer.events.length === 0 ? (
                 <Empty>Nenhum evento ainda.</Empty>
@@ -153,7 +161,7 @@ async function Dashboard() {
         </div>
 
         <aside className="flex flex-col gap-4">
-          {organizers.length > 0 && (
+          {organizers.some((organizer) => canOrganizer(organizer.members[0].role, "event")) && (
             <LinkButton href="/manage/events/new" className="w-full">
               <Icon name="plus" />
               Novo evento

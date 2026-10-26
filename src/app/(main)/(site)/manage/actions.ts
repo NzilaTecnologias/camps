@@ -14,6 +14,7 @@ import {
   reportMatchResult,
   setEventStatus,
 } from "@/server/manage";
+import { removeMember, setMemberRole } from "@/server/team";
 
 export async function createOrganizerAction(_state: ActionState, formData: FormData) {
   return runAction(async () => {
@@ -85,6 +86,24 @@ export async function generateBracketAction(divisionId: string, _state: ActionSt
   return runAction(async () => {
     const user = await requireUser();
     publicDataChanged({ eventId: await generateBracket(user.id, divisionId, text(formData, "type")) });
+    refresh();
+  });
+}
+
+export async function setMemberRoleAction(organizerId: string, _state: ActionState, formData: FormData) {
+  return runAction(async () => {
+    const user = await requireUser();
+    await setMemberRole(user.id, organizerId, text(formData, "email"), text(formData, "role"));
+    refresh();
+  });
+}
+
+export async function removeMemberAction(organizerId: string, memberId: string) {
+  return runAction(async () => {
+    const user = await requireUser();
+    await removeMember(user.id, organizerId, memberId);
+    // Quem sai da organização deixa de poder abrir a página da equipa.
+    if (memberId === user.id) redirect("/manage");
     refresh();
   });
 }

@@ -12,7 +12,7 @@ export type MatchStatus = "pending" | "ready" | "bye" | "finished";
 export type MatchLink = { key: string; slot: Slot };
 
 export type BracketMatch = {
-  /** Identificador estável dentro da chave, ex.: "R1-M3", "BRONZE", "RR2-M1". */
+  /** Identificador estável dentro da chave, ex.: "R1-M3", "BRONZE", "RR2-M1", "W2-M1", "L3-M2", "GF". */
   key: string;
   round: number;
   position: number;
@@ -22,7 +22,7 @@ export type BracketMatch = {
   status: MatchStatus;
   /** Para onde vai o vencedor. */
   next: MatchLink | null;
-  /** Para onde vai o perdedor (disputa de bronze). */
+  /** Para onde vai o perdedor (disputa de bronze, chave dos vencidos). */
   loserNext: MatchLink | null;
 };
 

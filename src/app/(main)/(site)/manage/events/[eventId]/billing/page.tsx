@@ -1,12 +1,14 @@
 import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Field } from "@/components/field";
-import { DataTable, Notice, SectionHeader, StatTile } from "@/components/manage/parts";
+import { DataTable, NoAccess, Notice, SectionHeader, StatTile } from "@/components/manage/parts";
 import { Card } from "@/components/ui";
 import { count, formatDateTime, formatMoney } from "@/lib/format";
+import { canOrganizer } from "@/lib/organizer-permissions";
 import { formatIban } from "@/lib/statement";
 import { requireUser } from "@/server/auth";
 import { getEventStatement } from "@/server/billing";
+import { getEventWorkspace } from "@/server/organizer";
 import { BillingDetailsCard, InvoiceTable } from "@/components/manage/invoices";
 import { updateOrganizerBillingAction, updatePayoutDetailsAction } from "../../../event-actions";
 
@@ -22,9 +24,11 @@ function Line({ label, value, strong = false }: { label: string; value: string; 
 async function Billing({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = await params;
   const user = await requireUser();
-  const result = await getEventStatement(user.id, eventId);
-  if (!result) return null;
+  const [event, result] = await Promise.all([getEventWorkspace(user.id, eventId), getEventStatement(user.id, eventId)]);
+  if (!event) return null;
+  if (!result) return <NoAccess />;
   const { statement, payouts, invoices, billing } = result;
+  const ownsPayouts = canOrganizer(event.role, "payout");
   const money = (cents: number) => formatMoney(cents, "AOA");
   const owesCamps = statement.balanceCents < 0;
 
@@ -96,28 +100,34 @@ async function Billing({ params }: { params: Promise<{ eventId: string }> }) {
             {statement.organizer.payoutIban && (
               <p className="mb-4 rounded-lg bg-surface-2 px-3 py-2 font-mono text-sm">{formatIban(statement.organizer.payoutIban)}</p>
             )}
-            <ActionForm
-              action={updatePayoutDetailsAction.bind(null, statement.organizer.id)}
-              submitLabel={statement.organizer.payoutIban ? "Atualizar conta" : "Guardar conta"}
-              submitVariant="secondary"
-              className="flex flex-col gap-4"
-            >
-              <Field label="Titular" name="holder" defaultValue={statement.organizer.payoutHolder ?? ""} maxLength={120} required />
-              <Field
-                label="IBAN"
-                name="iban"
-                defaultValue={statement.organizer.payoutIban ? formatIban(statement.organizer.payoutIban) : ""}
-                placeholder="AO06 0000 0000 0000 0000 0000 0"
-                autoComplete="off"
-                required
-              />
-            </ActionForm>
+            {ownsPayouts ? (
+              <ActionForm
+                action={updatePayoutDetailsAction.bind(null, statement.organizer.id)}
+                submitLabel={statement.organizer.payoutIban ? "Atualizar conta" : "Guardar conta"}
+                submitVariant="secondary"
+                className="flex flex-col gap-4"
+              >
+                <Field label="Titular" name="holder" defaultValue={statement.organizer.payoutHolder ?? ""} maxLength={120} required />
+                <Field
+                  label="IBAN"
+                  name="iban"
+                  defaultValue={statement.organizer.payoutIban ? formatIban(statement.organizer.payoutIban) : ""}
+                  placeholder="AO06 0000 0000 0000 0000 0000 0"
+                  autoComplete="off"
+                  required
+                />
+              </ActionForm>
+            ) : (
+              <p className="text-sm text-muted">Só o dono da organização muda a conta e os dados de faturação.</p>
+            )}
           </Card>
-          <BillingDetailsCard
-            action={updateOrganizerBillingAction.bind(null, statement.organizer.id)}
-            billing={billing}
-            owner={statement.organizer.name}
-          />
+          {ownsPayouts && (
+            <BillingDetailsCard
+              action={updateOrganizerBillingAction.bind(null, statement.organizer.id)}
+              billing={billing}
+              owner={statement.organizer.name}
+            />
+          )}
         </div>
       </div>
     </>

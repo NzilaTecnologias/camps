@@ -7,8 +7,10 @@ import { Field, SelectField } from "@/components/field";
 import { SectionHeader } from "@/components/manage/parts";
 import { BackLink, Badge, Card, Empty, LinkButton, SectionTitle, buttonClass } from "@/components/ui";
 import { BRACKET_TYPE_LABEL, count } from "@/lib/format";
+import { canOrganizer } from "@/lib/organizer-permissions";
 import { requireUser } from "@/server/auth";
 import { getManagedDivision } from "@/server/manage";
+import { getEventWorkspace } from "@/server/organizer";
 import { addAthleteAction, generateBracketAction, reportResultAction } from "../../../../actions";
 
 function ResultButtons({ match }: { match: BracketMatchDetails }) {
@@ -39,14 +41,20 @@ function ResultButtons({ match }: { match: BracketMatchDetails }) {
 async function DivisionPanel({ params }: { params: Promise<{ eventId: string; divisionId: string }> }) {
   const { eventId, divisionId } = await params;
   const user = await requireUser();
-  const division = await getManagedDivision(user.id, eventId, divisionId);
-  if (!division) notFound();
+  const [event, division] = await Promise.all([getEventWorkspace(user.id, eventId), getManagedDivision(user.id, eventId, divisionId)]);
+  if (!event || !division) notFound();
   const { bracket } = division;
   const hasResults = bracket?.matches.some((match) => match.status === "FINISHED") ?? false;
+  // O mesário vê a chave e lança resultados; mexer na chave e nos inscritos é para donos e gestores.
+  const manages = canOrganizer(event.role, "event");
 
   return (
     <>
-      <BackLink href={`/manage/events/${division.event.id}/divisions`}>Categorias</BackLink>
+      {manages ? (
+        <BackLink href={`/manage/events/${division.event.id}/divisions`}>Categorias</BackLink>
+      ) : (
+        <BackLink href={`/manage/events/${division.event.id}/brackets`}>Chaves</BackLink>
+      )}
       <div className="mt-3">
         <SectionHeader
           title={division.name}
@@ -67,7 +75,7 @@ async function DivisionPanel({ params }: { params: Promise<{ eventId: string; di
           <Empty>Ainda não há chave. Gere-a quando as inscrições estiverem fechadas.</Empty>
         )}
 
-        {hasResults ? (
+        {!manages ? null : hasResults ? (
           <p className="mt-4 text-sm text-muted">A chave já tem lutas disputadas e não pode mais ser regerada.</p>
         ) : (
           <Card className="mt-4 max-w-md p-5">
@@ -102,27 +110,29 @@ async function DivisionPanel({ params }: { params: Promise<{ eventId: string; di
           <RegistrantList registrations={division.registrations} />
         </section>
 
-        <aside>
-          <Card className="p-5">
-            <h2 className="font-display text-xl font-bold uppercase leading-none">Inscrever atleta manualmente</h2>
-            <p className="mt-2 mb-4 text-sm text-muted">
-              Entra como inscrição paga, sem cobrança. Quem entrar depois da chave gerada só aparece ao regerar.
-            </p>
-            <ActionForm
-              action={addAthleteAction.bind(null, division.id)}
-              submitLabel="Inscrever atleta"
-              submitVariant="secondary"
-              className="flex flex-col gap-4"
-            >
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Nome" name="firstName" required />
-                <Field label="Apelido" name="lastName" required />
-              </div>
-              <Field label="Data de nascimento" name="birthDate" type="date" required />
-              <Field label="Academia" name="academyName" />
-            </ActionForm>
-          </Card>
-        </aside>
+        {manages && (
+          <aside>
+            <Card className="p-5">
+              <h2 className="font-display text-xl font-bold uppercase leading-none">Inscrever atleta manualmente</h2>
+              <p className="mt-2 mb-4 text-sm text-muted">
+                Entra como inscrição paga, sem cobrança. Quem entrar depois da chave gerada só aparece ao regerar.
+              </p>
+              <ActionForm
+                action={addAthleteAction.bind(null, division.id)}
+                submitLabel="Inscrever atleta"
+                submitVariant="secondary"
+                className="flex flex-col gap-4"
+              >
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Nome" name="firstName" required />
+                  <Field label="Apelido" name="lastName" required />
+                </div>
+                <Field label="Data de nascimento" name="birthDate" type="date" required />
+                <Field label="Academia" name="academyName" />
+              </ActionForm>
+            </Card>
+          </aside>
+        )}
       </div>
     </>
   );

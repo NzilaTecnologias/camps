@@ -110,7 +110,7 @@ async function forgetMats(...matIds: (string | null | undefined)[]) {
 
 async function requireOpenMatch(userId: string, matchId: string) {
   const match = await prisma.match.findFirst({
-    where: { id: matchId, bracket: { division: { event: memberOf(userId) } } },
+    where: { id: matchId, bracket: { division: { event: memberOf(userId, "floor") } } },
     include: { bracket: { select: { division: { select: { eventId: true, event: { select: { sport: true } } } } } } },
   });
   if (!match) throw new UserError("Luta não encontrada");
@@ -222,13 +222,13 @@ export async function finishMatch(userId: string, matchId: string, winner: strin
 }
 
 async function requireMat(userId: string, matId: string) {
-  const mat = await prisma.mat.findFirst({ where: { id: matId, event: memberOf(userId) } });
+  const mat = await prisma.mat.findFirst({ where: { id: matId, event: memberOf(userId, "floor") } });
   if (!mat) throw new UserError("Área de luta não encontrada");
   return mat;
 }
 
 export async function createMat(userId: string, eventId: string, name: string) {
-  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId) } });
+  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId, "floor") } });
   if (!event) throw new UserError("Evento não encontrado");
   if (!name) throw new UserError("Informe o nome da área");
   if (await prisma.mat.findUnique({ where: { eventId_name: { eventId, name } } })) {
@@ -265,7 +265,7 @@ export async function setMatLive(userId: string, matId: string, isLive: boolean)
 /** Tudo o que a página de controlo do placar precisa, só para quem organiza o evento. */
 export async function getScoreboardControl(userId: string, matchId: string) {
   const match = await prisma.match.findFirst({
-    where: { id: matchId, bracket: { division: { event: memberOf(userId) } } },
+    where: { id: matchId, bracket: { division: { event: memberOf(userId, "floor") } } },
     include: {
       ...scoreboardInclude,
       bracket: {

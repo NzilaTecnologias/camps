@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { doubleEliminationSection } from "@/lib/brackets/double-elimination";
+import { formatTime } from "@/lib/format";
 import type { BracketDetails } from "@/server/events";
 import { Icon } from "./ui";
 import { Reveal } from "./reveal";
@@ -10,10 +12,10 @@ type Corner = Match["red"];
 
 const BRONZE_KEY = "BRONZE";
 
-function roundLabel(round: number, totalRounds: number, type: BracketDetails["type"]) {
-  if (type === "ROUND_ROBIN") return `Rodada ${round}`;
+/** Nome de cada ronda a contar do fim: a última é `finalLabel`. */
+function eliminationLabel(round: number, totalRounds: number, finalLabel = "Final") {
   const fromEnd = totalRounds - round;
-  return ["Final", "Semifinal", "Quartas de final", "Oitavas de final"][fromEnd] ?? `Rodada ${round}`;
+  return [finalLabel, "Semifinal", "Quartas de final", "Oitavas de final"][fromEnd] ?? `Rodada ${round}`;
 }
 
 function CornerRow({ corner, match, stripe }: { corner: Corner; match: Match; stripe: string }) {
@@ -44,20 +46,28 @@ function CornerRow({ corner, match, stripe }: { corner: Corner; match: Match; st
 }
 
 function MatchCard({ match, actions }: { match: Match; actions?: MatchActions }) {
+  const live = match.currentOnMat && match.status === "READY";
+  const planned = !live && match.status !== "FINISHED" && match.status !== "BYE" && (match.mat || match.scheduledAt);
   return (
     <div className="w-60 overflow-hidden rounded-lg border border-line bg-surface text-sm shadow-sm">
       <CornerRow corner={match.red} match={match} stripe="bg-corner-red" />
       <div className="border-t border-line" />
       <CornerRow corner={match.blue} match={match} stripe="bg-corner-blue" />
-      {match.currentOnMat && match.status === "READY" && (
+      {live && (
         <div className="flex items-center justify-between border-t border-line bg-danger/10 px-3 py-1.5 text-xs font-semibold text-danger">
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 animate-pulse rounded-full bg-danger" />
-            A decorrer · {match.currentOnMat.name}
+            A decorrer · {match.currentOnMat!.name}
           </span>
           <span className="font-mono text-foreground">
             {match.redScore}–{match.blueScore}
           </span>
+        </div>
+      )}
+      {planned && (
+        <div className="flex items-center gap-1.5 border-t border-line bg-surface-2 px-3 py-1.5 text-xs text-muted">
+          <Icon name="clock" className="h-3.5 w-3.5" />
+          {[match.mat?.name, match.scheduledAt && `prevista ${formatTime(match.scheduledAt)}`].filter(Boolean).join(" · ")}
         </div>
       )}
       {match.method && (
@@ -81,36 +91,101 @@ function RoundHeading({ children }: { children: ReactNode }) {
   );
 }
 
-export function BracketView({ bracket, actions }: { bracket: BracketDetails; actions?: MatchActions }) {
-  const main = bracket.matches.filter((m) => m.key !== BRONZE_KEY);
-  const bronze = bracket.matches.find((m) => m.key === BRONZE_KEY);
-  const rounds = [...new Set(main.map((m) => m.round))];
+/** Colunas de rondas, da primeira à última, com os rótulos dados por `label`. */
+function Rounds({
+  matches,
+  label,
+  actions,
+  after,
+}: {
+  matches: Match[];
+  label: (round: number, totalRounds: number) => string;
+  actions?: MatchActions;
+  /** O que vai por baixo da última coluna (a disputa de bronze). */
+  after?: ReactNode;
+}) {
+  const rounds = [...new Set(matches.map((m) => m.round))].sort((a, b) => a - b);
   const totalRounds = Math.max(...rounds);
-
   return (
     <div className="-mx-4 overflow-x-auto px-4 pb-3">
       <div className="flex min-w-max gap-8">
         {rounds.map((round) => (
           <Reveal key={round} stagger className="flex shrink-0">
             <section className="flex shrink-0 flex-col gap-4">
-              <RoundHeading>{roundLabel(round, totalRounds, bracket.type)}</RoundHeading>
+              <RoundHeading>{label(round, totalRounds)}</RoundHeading>
               <div className="flex flex-1 flex-col justify-around gap-4">
-                {main
+                {matches
                   .filter((m) => m.round === round)
                   .map((match) => (
                     <MatchCard key={match.id} match={match} actions={actions} />
                   ))}
               </div>
-              {bronze && round === totalRounds && (
-                <>
-                  <RoundHeading>Disputa de 3º lugar</RoundHeading>
-                  <MatchCard match={bronze} actions={actions} />
-                </>
-              )}
+              {round === totalRounds && after}
             </section>
           </Reveal>
         ))}
       </div>
     </div>
+  );
+}
+
+function PartTitle({ children, hint }: { children: ReactNode; hint: string }) {
+  return (
+    <div className="mb-3">
+      <p className="text-sm font-semibold uppercase tracking-wider">{children}</p>
+      <p className="text-xs text-muted">{hint}</p>
+    </div>
+  );
+}
+
+function DoubleElimination({ bracket, actions }: { bracket: BracketDetails; actions?: MatchActions }) {
+  const part = (section: ReturnType<typeof doubleEliminationSection>) =>
+    bracket.matches.filter((m) => doubleEliminationSection(m.key) === section);
+  const [final] = part("final");
+  return (
+    <div className="space-y-8">
+      <div>
+        <PartTitle hint="Quem perde aqui ainda tem uma segunda oportunidade.">Chave principal</PartTitle>
+        <Rounds matches={part("winners")} label={(round, total) => eliminationLabel(round, total, "Final da principal")} actions={actions} />
+      </div>
+      <div>
+        <PartTitle hint="Quem perde aqui pela segunda vez sai da prova.">Chave dos vencidos</PartTitle>
+        <Rounds
+          // As lutas que ficaram sem ninguém (byes seguidos na primeira ronda) só fariam ruído.
+          matches={part("losers").filter((m) => m.red || m.blue || m.status !== "BYE")}
+          label={(round, total) => (round === total ? "Final dos vencidos" : `Ronda ${round}`)}
+          actions={actions}
+        />
+      </div>
+      {final && (
+        <div>
+          <PartTitle hint="O vencedor da chave principal contra o da chave dos vencidos, numa luta única.">Final</PartTitle>
+          <MatchCard match={final} actions={actions} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function BracketView({ bracket, actions }: { bracket: BracketDetails; actions?: MatchActions }) {
+  if (bracket.type === "DOUBLE_ELIMINATION") return <DoubleElimination bracket={bracket} actions={actions} />;
+  if (bracket.type === "ROUND_ROBIN") {
+    return <Rounds matches={bracket.matches} label={(round) => `Rodada ${round}`} actions={actions} />;
+  }
+  const bronze = bracket.matches.find((m) => m.key === BRONZE_KEY);
+  return (
+    <Rounds
+      matches={bracket.matches.filter((m) => m.key !== BRONZE_KEY)}
+      label={(round, total) => eliminationLabel(round, total)}
+      actions={actions}
+      after={
+        bronze && (
+          <>
+            <RoundHeading>Disputa de 3º lugar</RoundHeading>
+            <MatchCard match={bronze} actions={actions} />
+          </>
+        )
+      }
+    />
   );
 }

@@ -1,9 +1,10 @@
 import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Field } from "@/components/field";
-import { DataTable, Notice, SectionHeader, StatTile } from "@/components/manage/parts";
+import { DataTable, NoAccess, Notice, SectionHeader, StatTile } from "@/components/manage/parts";
 import { Badge, Empty } from "@/components/ui";
 import { formatDateTime, formatMoney } from "@/lib/format";
+import { canOrganizer } from "@/lib/organizer-permissions";
 import { requireUser } from "@/server/auth";
 import { getEventWorkspace, listEventPayments } from "@/server/organizer";
 import { refundAction } from "../../../event-actions";
@@ -50,8 +51,9 @@ async function Payments({ params }: { params: Promise<{ eventId: string }> }) {
   const user = await requireUser();
   const [event, payments] = await Promise.all([getEventWorkspace(user.id, eventId), listEventPayments(user.id, eventId)]);
   if (!event) return null;
+  if (!canOrganizer(event.role, "money")) return <NoAccess />;
 
-  const sum = (rows: Payment[]) => rows.reduce((total, payment) => total + payment.amountCents, 0);
+  const sum =(rows: Payment[]) => rows.reduce((total, payment) => total + payment.amountCents, 0);
   const collected = payments.filter((payment) => payment.status === "SUCCEEDED" || payment.status === "REFUNDED");
   const refunded = payments.filter((payment) => payment.status === "REFUNDED");
   const pending = payments.filter((payment) => payment.status === "PENDING");

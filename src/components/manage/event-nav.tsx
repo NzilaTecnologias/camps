@@ -3,43 +3,51 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { canOrganizer, type OrganizerPermission, type OrganizerRole } from "@/lib/organizer-permissions";
 import { Icon, type IconName } from "../ui";
 
 type Item = { segment: string; label: string; icon: IconName };
 export type NavSection = { title: string; items: Item[] };
 
-/** Secções do painel de um evento, pela ordem em que o organizador as usa. */
-export const EVENT_SECTIONS: NavSection[] = [
+type EventItem = Item & { permission: OrganizerPermission };
+
+/** Secções do painel de um evento, pela ordem em que o organizador as usa, e quem as pode abrir. */
+export const EVENT_SECTIONS: { title: string; items: EventItem[] }[] = [
   {
     title: "Evento",
     items: [
-      { segment: "", label: "Visão geral", icon: "home" },
-      { segment: "settings", label: "Página do evento", icon: "settings" },
-      { segment: "divisions", label: "Categorias", icon: "layers" },
+      { segment: "", label: "Visão geral", icon: "home", permission: "view" },
+      { segment: "settings", label: "Página do evento", icon: "settings", permission: "event" },
+      { segment: "divisions", label: "Categorias", icon: "layers", permission: "event" },
     ],
   },
   {
     title: "Inscrições",
     items: [
-      { segment: "registrations", label: "Inscrições", icon: "users" },
-      { segment: "discounts", label: "Descontos e cupões", icon: "ticket" },
-      { segment: "payments", label: "Pagamentos e reembolsos", icon: "wallet" },
-      { segment: "billing", label: "Faturação e repasses", icon: "flag" },
+      { segment: "registrations", label: "Inscrições", icon: "users", permission: "view" },
+      { segment: "discounts", label: "Descontos e cupões", icon: "ticket", permission: "event" },
+      { segment: "payments", label: "Pagamentos e reembolsos", icon: "wallet", permission: "money" },
+      { segment: "billing", label: "Faturação e repasses", icon: "flag", permission: "money" },
     ],
   },
   {
     title: "Dia da prova",
     items: [
-      { segment: "weigh-in", label: "Pesagem", icon: "scale" },
-      { segment: "brackets", label: "Chaves", icon: "bracket" },
-      { segment: "scoreboard", label: "Placar e áreas", icon: "monitor" },
-      { segment: "streaming", label: "Transmissão", icon: "video" },
+      { segment: "weigh-in", label: "Pesagem", icon: "scale", permission: "floor" },
+      { segment: "brackets", label: "Chaves", icon: "bracket", permission: "view" },
+      { segment: "schedule", label: "Programação", icon: "clock", permission: "view" },
+      { segment: "scoreboard", label: "Placar e áreas", icon: "monitor", permission: "floor" },
+      { segment: "streaming", label: "Transmissão", icon: "video", permission: "floor" },
     ],
   },
 ];
 
-export function EventNav({ eventId }: { eventId: string }) {
-  return <SectionNav base={`/manage/events/${eventId}`} sections={EVENT_SECTIONS} label="Secções do evento" />;
+export function EventNav({ eventId, role }: { eventId: string; role: OrganizerRole }) {
+  const sections = EVENT_SECTIONS.map((group) => ({
+    title: group.title,
+    items: group.items.filter((item) => canOrganizer(role, item.permission)),
+  })).filter((group) => group.items.length > 0);
+  return <SectionNav base={`/manage/events/${eventId}`} sections={sections} label="Secções do evento" />;
 }
 
 /**

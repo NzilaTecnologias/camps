@@ -156,7 +156,12 @@ export const divisionDetails = {
     include: {
       matches: {
         orderBy: [{ round: "asc" }, { position: "asc" }],
-        include: { red: athleteSummary, blue: athleteSummary, currentOnMat: { select: { id: true, name: true } } },
+        include: {
+          red: athleteSummary,
+          blue: athleteSummary,
+          currentOnMat: { select: { id: true, name: true } },
+          mat: { select: { id: true, name: true } },
+        },
       },
       placements: { orderBy: { place: "asc" }, include: { registration: athleteSummary } },
     },

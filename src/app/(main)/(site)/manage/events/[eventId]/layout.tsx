@@ -5,6 +5,7 @@ import { EventNav } from "@/components/manage/event-nav";
 import { EventStatusBadge } from "@/components/status-badges";
 import { BackLink, Icon, LinkButton } from "@/components/ui";
 import { formatDateRange } from "@/lib/format";
+import { ORGANIZER_ROLE_LABEL, canOrganizer } from "@/lib/organizer-permissions";
 import { requireUser } from "@/server/auth";
 import { getEventWorkspace } from "@/server/organizer";
 import { setEventStatusAction } from "../../actions";
@@ -25,7 +26,7 @@ async function Workspace({ params, children }: { params: Promise<{ eventId: stri
             <div className="mb-2 flex flex-wrap items-center gap-3">
               <EventStatusBadge status={event.status} />
               <span className="text-sm text-white/70">
-                {event.organizer.name} · {event.sport}
+                {event.organizer.name} · {event.sport} · {ORGANIZER_ROLE_LABEL[event.role]}
               </span>
             </div>
             <h1 className="font-display text-4xl font-bold uppercase leading-none tracking-tight sm:text-5xl">
@@ -50,13 +51,15 @@ async function Workspace({ params, children }: { params: Promise<{ eventId: stri
                   <Icon name="external" />
                 </LinkButton>
               )}
-              <ActionForm
-                action={setEventStatusAction.bind(null, event.id, isPublished ? "DRAFT" : "PUBLISHED")}
-                submitLabel={isPublished ? "Despublicar" : "Publicar evento"}
-                submitVariant={isPublished ? "secondary" : "primary"}
-              >
-                {null}
-              </ActionForm>
+              {canOrganizer(event.role, "event") && (
+                <ActionForm
+                  action={setEventStatusAction.bind(null, event.id, isPublished ? "DRAFT" : "PUBLISHED")}
+                  submitLabel={isPublished ? "Despublicar" : "Publicar evento"}
+                  submitVariant={isPublished ? "secondary" : "primary"}
+                >
+                  {null}
+                </ActionForm>
+              )}
             </div>
           )}
         </div>
@@ -64,7 +67,7 @@ async function Workspace({ params, children }: { params: Promise<{ eventId: stri
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[14rem_minmax(0,1fr)]">
         <aside className="min-w-0">
-          <EventNav eventId={event.id} />
+          <EventNav eventId={event.id} role={event.role} />
         </aside>
         <div className="min-w-0">{children}</div>
       </div>

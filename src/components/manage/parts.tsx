@@ -117,6 +117,16 @@ export function FilterTabs({ tabs }: { tabs: { href: string; label: string; coun
   );
 }
 
+/** No lugar de uma secção que o papel de quem a abre não permite. */
+export function NoAccess() {
+  return (
+    <Notice>
+      O seu papel na equipa desta organização não dá acesso a esta secção. Se precisar dela, peça ao dono da organização
+      para mudar o seu papel em Equipa.
+    </Notice>
+  );
+}
+
 /** Aviso destacado dentro de uma secção. */
 export function Notice({ tone = "warning", children }: { tone?: "warning" | "danger" | "success"; children: ReactNode }) {
   const style = {

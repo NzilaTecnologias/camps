@@ -1,7 +1,8 @@
 import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Field, SelectField, TextAreaField } from "@/components/field";
-import { SectionHeader } from "@/components/manage/parts";
+import { NoAccess, SectionHeader } from "@/components/manage/parts";
+import { canOrganizer } from "@/lib/organizer-permissions";
 import { LocationPicker } from "@/components/map/location-picker";
 import { Card } from "@/components/ui";
 import { toDateInput } from "@/lib/format";
@@ -30,6 +31,7 @@ async function Settings({ params }: { params: Promise<{ eventId: string }> }) {
   const user = await requireUser();
   const event = await getEventWorkspace(user.id, eventId);
   if (!event) return null;
+  if (!canOrganizer(event.role, "event")) return <NoAccess />;
   const federations = await federationsForOrganizer(event.organizerId);
 
   return (

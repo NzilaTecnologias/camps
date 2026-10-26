@@ -6,25 +6,33 @@ import { UTC_OFFSET } from "@/lib/format";
 import { planActive, premiumActive } from "@/lib/federation-rules";
 import { parseLatLng } from "@/lib/geo";
 import { SPORT_NAMES } from "@/lib/sports";
-import { createBracket } from "./brackets";
+import { MIN_COMPETITORS, createBracket, parseBracketKind } from "./brackets";
 import { memberOf } from "./manage";
 
 // Consultas e ações das secções do painel de um evento. Tudo passa por memberOf:
 // só quem pertence à organização do evento vê ou mexe.
 
-/** Cabeçalho e menu do painel do evento; partilhado pelo layout e pelas páginas no mesmo pedido. */
+/**
+ * Cabeçalho e menu do painel do evento; partilhado pelo layout e pelas páginas no mesmo pedido.
+ * Traz o papel de quem vê, para cada secção decidir o que mostra.
+ */
 export const getEventWorkspace = cache(async (userId: string, eventId: string) => {
-  return prisma.event.findFirst({
+  const event = await prisma.event.findFirst({
     where: { id: eventId, ...memberOf(userId) },
-    include: { organizer: { select: { name: true, slug: true } } },
+    include: {
+      organizer: { select: { name: true, slug: true, members: { where: { userId }, select: { role: true } } } },
+    },
   });
+  if (!event) return null;
+  const { members, ...organizer } = event.organizer;
+  return { ...event, organizer, role: members[0].role };
 });
 
 export type EventWorkspace = NonNullable<Awaited<ReturnType<typeof getEventWorkspace>>>;
 
 export async function getEventOverview(userId: string, eventId: string) {
   const where = { eventId, event: memberOf(userId) };
-  const [byStatus, revenue, refunded, divisions, brackets, weighed, mats, coupons, recent] = await Promise.all([
+  const [byStatus, revenue, refunded, divisions, brackets, weighed, mats, coupons, recent, scheduled] = await Promise.all([
     prisma.registration.groupBy({ by: ["status"], where, _count: true }),
     prisma.payment.aggregate({
       where: { registration: where, status: { in: ["SUCCEEDED", "REFUNDED"] } },
@@ -45,6 +53,7 @@ export async function getEventOverview(userId: string, eventId: string) {
         division: { select: { name: true } },
       },
     }),
+    prisma.match.count({ where: { bracket: { division: where }, sequence: { not: null } } }),
   ]);
   const countOf = (status: string) => byStatus.find((row) => row.status === status)?._count ?? 0;
   const grossCents = revenue._sum.amountCents ?? 0;
@@ -63,6 +72,7 @@ export async function getEventOverview(userId: string, eventId: string) {
     busyMats: mats.filter((mat) => mat.currentMatchId).length,
     coupons,
     recent,
+    scheduled,
   };
 }
 
@@ -88,7 +98,7 @@ function parseDay(value: string, time: string, label: string): Date {
 
 /** Edita a página pública do evento: nome, modalidade, datas, local e descrição. */
 export async function updateEventSettings(userId: string, eventId: string, input: EventSettingsInput) {
-  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId) } });
+  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId, "event") } });
   if (!event) throw new UserError("Evento não encontrado");
   if (!input.name) throw new UserError("Informe o nome do evento");
   if (input.name.length > 120) throw new UserError("O nome pode ter no máximo 120 caracteres");
@@ -127,7 +137,7 @@ export async function updateEventSettings(userId: string, eventId: string, input
 }
 
 export async function cancelEvent(userId: string, eventId: string) {
-  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId) } });
+  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId, "event") } });
   if (!event) throw new UserError("Evento não encontrado");
   await prisma.event.update({ where: { id: event.id }, data: { status: "CANCELLED" } });
 }
@@ -191,7 +201,7 @@ export async function listEventRegistrations(userId: string, eventId: string, fi
 }
 
 export async function listEventPayments(userId: string, eventId: string) {
-  const where = { registration: { eventId, event: memberOf(userId) } };
+  const where = { registration: { eventId, event: memberOf(userId, "money") } };
   return prisma.payment.findMany({
     where: { ...where, status: { in: ["SUCCEEDED", "REFUNDED", "PENDING"] } },
     orderBy: { createdAt: "desc" },
@@ -215,7 +225,7 @@ export async function listEventPayments(userId: string, eventId: string) {
 /** Atletas confirmados de uma categoria (ou de todas), com a pesagem de cada um. */
 export function listWeighIns(userId: string, eventId: string, divisionId?: string) {
   return prisma.division.findMany({
-    where: { eventId, event: memberOf(userId), ...(divisionId ? { id: divisionId } : {}) },
+    where: { eventId, event: memberOf(userId, "floor"), ...(divisionId ? { id: divisionId } : {}) },
     orderBy: [{ gender: "asc" }, { belt: "asc" }, { maxWeightKg: "asc" }],
     select: {
       id: true,
@@ -241,7 +251,7 @@ export function listWeighIns(userId: string, eventId: string, divisionId?: strin
  */
 export async function recordWeighIn(userId: string, registrationId: string, weight: string) {
   const registration = await prisma.registration.findFirst({
-    where: { id: registrationId, status: "PAID", event: memberOf(userId) },
+    where: { id: registrationId, status: "PAID", event: memberOf(userId, "floor") },
     include: { division: { select: { maxWeightKg: true } } },
   });
   if (!registration) throw new UserError("Inscrição não encontrada");
@@ -259,7 +269,7 @@ export async function recordWeighIn(userId: string, registrationId: string, weig
 }
 
 export async function clearWeighIn(userId: string, registrationId: string) {
-  const registration = await prisma.registration.findFirst({ where: { id: registrationId, event: memberOf(userId) } });
+  const registration = await prisma.registration.findFirst({ where: { id: registrationId, event: memberOf(userId, "floor") } });
   if (!registration) throw new UserError("Inscrição não encontrada");
   await prisma.weighIn.deleteMany({ where: { registrationId: registration.id } });
 }
@@ -270,7 +280,7 @@ const fighter = {
 
 /** Mesa do placar: cada área com a luta atual e as lutas prontas para chamar. */
 export async function getScoreboardDesk(userId: string, eventId: string) {
-  const where = { eventId, event: memberOf(userId) };
+  const where = { eventId, event: memberOf(userId, "floor") };
   const [mats, ready] = await Promise.all([
     prisma.mat.findMany({
       where,
@@ -291,11 +301,13 @@ export async function getScoreboardDesk(userId: string, eventId: string) {
     }),
     prisma.match.findMany({
       where: { status: "READY", bracket: { division: where } },
-      orderBy: [{ round: "asc" }, { position: "asc" }],
+      // Pela programação, quando há; as lutas por programar vão no fim, por ronda.
+      orderBy: [{ scheduledAt: { sort: "asc", nulls: "last" } }, { sequence: { sort: "asc", nulls: "last" } }, { round: "asc" }, { position: "asc" }],
       take: 100,
       select: {
         id: true,
         round: true,
+        scheduledAt: true,
         red: fighter,
         blue: fighter,
         mat: { select: { name: true } },
@@ -309,7 +321,7 @@ export async function getScoreboardDesk(userId: string, eventId: string) {
 
 export function listStreams(userId: string, eventId: string) {
   return prisma.mat.findMany({
-    where: { eventId, event: memberOf(userId) },
+    where: { eventId, event: memberOf(userId, "floor") },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     include: { currentMatch: { select: { id: true, red: fighter, blue: fighter } } },
   });
@@ -334,10 +346,10 @@ export async function countRegistrationsByStatus(userId: string, eventId: string
  * Gera de uma vez as chaves das categorias que ainda não têm, quando há pelo menos dois
  * atletas que podem lutar (pagos e sem reprovação na pesagem). Devolve quantas gerou.
  */
-export async function generateMissingBrackets(userId: string, eventId: string, type: string) {
-  if (type !== "SINGLE_ELIMINATION" && type !== "ROUND_ROBIN") throw new UserError("Tipo de chave inválido");
+export async function generateMissingBrackets(userId: string, eventId: string, rawType: string) {
+  const type = parseBracketKind(rawType);
   const divisions = await prisma.division.findMany({
-    where: { eventId, event: memberOf(userId), bracket: { is: null } },
+    where: { eventId, event: memberOf(userId, "event"), bracket: { is: null } },
     select: {
       id: true,
       _count: {
@@ -349,7 +361,7 @@ export async function generateMissingBrackets(userId: string, eventId: string, t
       },
     },
   });
-  const ready = divisions.filter((division) => division._count.registrations >= 2);
+  const ready = divisions.filter((division) => division._count.registrations >= MIN_COMPETITORS[type]);
   for (const division of ready) await createBracket(division.id, type);
   return { generated: ready.length, skipped: divisions.length - ready.length };
 }
@@ -359,7 +371,7 @@ export async function generateMissingBrackets(userId: string, eventId: string, t
  * organização do evento; exigir filiação só com o plano Premium.
  */
 export async function setEventFederation(userId: string, eventId: string, federationId: string, requiresMembership: boolean) {
-  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId) } });
+  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId, "event") } });
   if (!event) throw new UserError("Evento não encontrado");
   if (!federationId) {
     await prisma.event.update({ where: { id: event.id }, data: { federationId: null, requiresMembership: false } });

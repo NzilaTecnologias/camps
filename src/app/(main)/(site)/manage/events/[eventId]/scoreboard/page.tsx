@@ -4,6 +4,7 @@ import { ActionForm } from "@/components/action-form";
 import { Field } from "@/components/field";
 import { SectionHeader } from "@/components/manage/parts";
 import { Badge, Card, Empty, Icon, LinkButton } from "@/components/ui";
+import { formatTime } from "@/lib/format";
 import { requireUser } from "@/server/auth";
 import { getScoreboardDesk } from "@/server/organizer";
 import { createMatAction } from "../../../scoreboard-actions";
@@ -114,7 +115,14 @@ async function Desk({ params }: { params: Promise<{ eventId: string }> }) {
                     <span className="text-corner-blue">{name(match.blue)}</span>
                   </p>
                   <p className="text-xs text-muted">
-                    {match.bracket.division.name} · ronda {match.round}
+                    {[
+                      match.bracket.division.name,
+                      `ronda ${match.round}`,
+                      match.mat && !match.currentOnMat && match.mat.name,
+                      match.scheduledAt && `prevista ${formatTime(match.scheduledAt)}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </p>
                 </div>
                 {match.currentOnMat && <Badge tone="success">No placar · {match.currentOnMat.name}</Badge>}

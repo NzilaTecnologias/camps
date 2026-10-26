@@ -157,7 +157,19 @@ async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
         </section>
       )}
 
-      <SectionTitle aside={<span className="text-sm text-muted">{count(totalRegistered, "inscrito", "inscritos")} no total</span>}>
+      <SectionTitle
+        aside={
+          <span className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-sm text-muted">
+            {event.divisions.some((division) => division.bracket) && (
+              <Link href={`/events/${event.slug}/schedule`} className="inline-flex items-center gap-1.5 font-semibold text-primary hover:underline">
+                <Icon name="clock" />
+                Programação das lutas
+              </Link>
+            )}
+            {count(totalRegistered, "inscrito", "inscritos")} no total
+          </span>
+        }
+      >
         Categorias
       </SectionTitle>
       {event.divisions.length === 0 ? (

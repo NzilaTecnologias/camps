@@ -1,17 +1,21 @@
 import { prisma } from "@/lib/db";
 import { UserError } from "@/lib/errors";
 import { DEFAULT_COUNTRY, UTC_OFFSET } from "@/lib/format";
+import { rolesWith, type OrganizerPermission } from "@/lib/organizer-permissions";
 import { slugify } from "@/lib/slug";
 import { SPORT_NAMES } from "@/lib/sports";
 import { parseLatLng } from "@/lib/geo";
 import { platformFeePerAthleteCents } from "./billing-config";
-import { createBracket, reportResult, type BracketKind } from "./brackets";
+import { createBracket, parseBracketKind, reportResult } from "./brackets";
 import { divisionDetails } from "./events";
 
-// Toda função daqui recebe o usuário logado e só enxerga o que pertence a um organizador dele.
-// Por enquanto qualquer membro pode tudo; os papéis (OWNER/ADMIN/STAFF) ainda não restringem nada.
+// Toda função daqui recebe o usuário logado e só enxerga o que pertence a um organizador dele,
+// e só o que o papel dele na equipa permite (lib/organizer-permissions.ts).
 
-export const memberOf = (userId: string) => ({ organizer: { members: { some: { userId } } } });
+/** Filtro de eventos da organização do utilizador, com um papel que tenha a permissão pedida. */
+export const memberOf = (userId: string, permission: OrganizerPermission = "view") => ({
+  organizer: { members: { some: { userId, role: { in: rolesWith(permission) } } } },
+});
 
 
 function parseDay(value: string, time: string, label: string): Date {
@@ -38,6 +42,8 @@ export function listOrganizers(userId: string) {
     where: { members: { some: { userId } } },
     orderBy: { name: "asc" },
     include: {
+      members: { where: { userId }, select: { role: true } },
+      _count: { select: { members: true } },
       events: {
         orderBy: { startsAt: "desc" },
         include: { _count: { select: { registrations: { where: { status: "PAID" } } } } },
@@ -68,10 +74,10 @@ export type EventInput = {
 };
 
 export async function createEvent(userId: string, input: EventInput) {
-  const membership = await prisma.organizerMember.findUnique({
-    where: { organizerId_userId: { organizerId: input.organizerId, userId } },
+  const membership = await prisma.organizerMember.findFirst({
+    where: { organizerId: input.organizerId, userId, role: { in: rolesWith("event") } },
   });
-  if (!membership) throw new UserError("Escolha uma organização sua");
+  if (!membership) throw new UserError("Escolha uma organização onde seja dono ou gestor");
 
   required(input.name, "o nome do evento");
   if (!SPORT_NAMES.includes(input.sport)) throw new UserError("Escolha a modalidade do evento");
@@ -134,14 +140,14 @@ export function getManagedEvent(userId: string, eventId: string) {
 }
 
 async function requireEvent(userId: string, eventId: string) {
-  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId) } });
-  if (!event) throw new UserError("Evento não encontrado");
+  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId, "event") } });
+  if (!event) throw new UserError("Evento não encontrado ou sem permissão");
   return event;
 }
 
 async function requireDivision(userId: string, divisionId: string) {
   const division = await prisma.division.findFirst({
-    where: { id: divisionId, event: memberOf(userId) },
+    where: { id: divisionId, event: memberOf(userId, "event") },
     include: { event: true },
   });
   if (!division) throw new UserError("Categoria não encontrada");
@@ -247,14 +253,13 @@ export async function addAthlete(userId: string, divisionId: string, input: Athl
 
 export async function generateBracket(userId: string, divisionId: string, type: string) {
   const division = await requireDivision(userId, divisionId);
-  if (type !== "SINGLE_ELIMINATION" && type !== "ROUND_ROBIN") throw new UserError("Tipo de chave inválido");
-  await createBracket(division.id, type satisfies BracketKind);
+  await createBracket(division.id, parseBracketKind(type));
   return division.eventId;
 }
 
 export async function reportMatchResult(userId: string, matchId: string, winnerId: string) {
   const match = await prisma.match.findFirst({
-    where: { id: matchId, bracket: { division: { event: memberOf(userId) } } },
+    where: { id: matchId, bracket: { division: { event: memberOf(userId, "floor") } } },
     select: { id: true, bracket: { select: { division: { select: { eventId: true } } } } },
   });
   if (!match) throw new UserError("Luta não encontrada");

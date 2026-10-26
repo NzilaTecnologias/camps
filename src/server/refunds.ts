@@ -40,7 +40,7 @@ export async function requestRefund(
   input: { reason: string; manual: boolean },
 ) {
   const payment = await prisma.payment.findFirst({
-    where: { id: paymentId, registration: { event: memberOf(userId) } },
+    where: { id: paymentId, registration: { event: memberOf(userId, "money") } },
     include: { refund: true, registration: { select: { eventId: true } } },
   });
   if (!payment) throw new UserError("Pagamento não encontrado");
@@ -113,7 +113,7 @@ export async function refreshRefundByProviderRef(provider: "MULTICAIXA_EXPRESS" 
  */
 export async function cancelRegistration(userId: string, registrationId: string) {
   const registration = await prisma.registration.findFirst({
-    where: { id: registrationId, event: memberOf(userId) },
+    where: { id: registrationId, event: memberOf(userId, "event") },
     include: { payments: true },
   });
   if (!registration) throw new UserError("Inscrição não encontrada");

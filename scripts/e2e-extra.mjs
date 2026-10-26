@@ -143,7 +143,7 @@ await alice.submit(B, 'name="iban"', { holder: "Liga X Lda", iban: "ao15 0040 00
 r = await alice.get(B);
 check("IBAN válido fica guardado e formatado", strip(r.html).includes("AO15 0040 0000 1234 5678 1017 4"));
 r = await bob.replay(alice, B, 'name="iban"', { holder: "Bob", iban: "AO15004000001234567810174" });
-check("outro utilizador não muda a conta da organização", r.html.includes("Organização não encontrada"));
+check("outro utilizador não muda a conta da organização", r.html.includes("Só o dono da organização pode mudar a conta"));
 r = await alice.get("/admin/payouts");
 check("organizador sem permissão não vê os repasses", r.status === 404 || !strip(r.html).includes("Repasses aos organizadores"));
 const admin = new Browser();

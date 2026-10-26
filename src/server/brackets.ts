@@ -1,6 +1,9 @@
 import {
+  doubleEliminationPlacements,
+  generateDoubleElimination,
   generateRoundRobin,
   generateSingleElimination,
+  recordDoubleEliminationResult,
   recordResult,
   roundRobinPlacements,
   singleEliminationPlacements,
@@ -12,7 +15,46 @@ import {
 import { prisma } from "@/lib/db";
 import { UserError } from "@/lib/errors";
 
-export type BracketKind = "SINGLE_ELIMINATION" | "ROUND_ROBIN";
+export const BRACKET_KINDS = ["SINGLE_ELIMINATION", "DOUBLE_ELIMINATION", "ROUND_ROBIN"] as const;
+export type BracketKind = (typeof BRACKET_KINDS)[number];
+
+export function parseBracketKind(value: string): BracketKind {
+  const kind = BRACKET_KINDS.find((k) => k === value);
+  if (!kind) throw new UserError("Tipo de chave inválido");
+  return kind;
+}
+
+/** Quantos atletas aptos cada tipo de chave precisa. */
+export const MIN_COMPETITORS: Record<BracketKind, number> = {
+  SINGLE_ELIMINATION: 2,
+  DOUBLE_ELIMINATION: 3,
+  ROUND_ROBIN: 2,
+};
+
+const ENGINE = {
+  SINGLE_ELIMINATION: {
+    generate: (competitors) => generateSingleElimination(competitors),
+    record: recordResult,
+    placements: singleEliminationPlacements,
+  },
+  DOUBLE_ELIMINATION: {
+    generate: (competitors) => generateDoubleElimination(competitors),
+    record: recordDoubleEliminationResult,
+    placements: doubleEliminationPlacements,
+  },
+  ROUND_ROBIN: {
+    generate: (competitors) => generateRoundRobin(competitors),
+    record: recordResult,
+    placements: roundRobinPlacements,
+  },
+} satisfies Record<
+  BracketKind,
+  {
+    generate: (competitors: Parameters<typeof generateSingleElimination>[0]) => BracketMatch[];
+    record: typeof recordResult;
+    placements: (matches: BracketMatch[]) => ReturnType<typeof singleEliminationPlacements>;
+  }
+>;
 
 type MatchRow = {
   key: string;
@@ -79,8 +121,7 @@ export async function createBracket(divisionId: string, type: BracketKind) {
   });
 
   const competitors = registrations.map((r) => ({ id: r.id, academyId: r.athlete.academyId, seed: r.seed }));
-  const matches =
-    type === "ROUND_ROBIN" ? generateRoundRobin(competitors) : generateSingleElimination(competitors);
+  const matches = ENGINE[type].generate(competitors);
 
   return prisma.$transaction(async (tx) => {
     const started = await tx.match.count({ where: { bracket: { divisionId }, status: "FINISHED" } });
@@ -104,8 +145,9 @@ export async function reportResult(matchId: string, winnerId: string, details: R
         include: { bracket: { include: { matches: true } } },
       });
       const { bracket } = match;
+      const engine = ENGINE[bracket.type];
       const before = bracket.matches.map(toEngine);
-      const after = recordResult(before, match.key, winnerId);
+      const after = engine.record(before, match.key, winnerId);
 
       for (const current of after) {
         const previous = before.find((m) => m.key === current.key) as BracketMatch;
@@ -114,6 +156,7 @@ export async function reportResult(matchId: string, winnerId: string, details: R
           !isReported &&
           previous.red === current.red &&
           previous.blue === current.blue &&
+          previous.winner === current.winner &&
           previous.status === current.status
         ) {
           continue;
@@ -131,8 +174,7 @@ export async function reportResult(matchId: string, winnerId: string, details: R
       }
 
       if (after.every((m) => m.status === "finished" || m.status === "bye")) {
-        const placements =
-          bracket.type === "ROUND_ROBIN" ? roundRobinPlacements(after) : singleEliminationPlacements(after);
+        const placements = engine.placements(after);
         await tx.placement.deleteMany({ where: { bracketId: bracket.id } });
         await tx.placement.createMany({
           data: placements.map((p) => ({ bracketId: bracket.id, registrationId: p.competitorId, place: p.place })),

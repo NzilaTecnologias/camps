@@ -32,11 +32,32 @@ Cada evento tem um painel próprio em `/manage/events/<id>`, com um menu por sec
 | Pagamentos e reembolsos | Totais cobrados e reembolsados; reembolso total pelo provedor (ProxyPay `type: refund`, PayPal refund da captura) ou registo de devolução feita fora da plataforma |
 | Faturação e repasses | Extrato do evento: cobrado online − reembolsos − taxa Camps − transferências já feitas = saldo a receber (ou em dívida). IBAN da organização para os repasses |
 | Pesagem | Peso de cada atleta confirmado; quem fica acima do limite sai da chave quando ela é gerada |
-| Chaves | Estado de cada categoria, gerar ou regerar, e gerar de uma vez as que faltam |
-| Placar e áreas | Áreas de luta, a luta em cada placar e as lutas prontas para chamar |
+| Chaves | Estado de cada categoria, gerar ou regerar (eliminação simples, dupla eliminação ou todos contra todos), e gerar de uma vez as que faltam |
+| Programação | Área de cada categoria (à mão ou repartida automaticamente), hora de início de cada área e minutos por luta; gera a ordem e a hora prevista de cada luta |
+| Placar e áreas | Áreas de luta, a luta em cada placar e as lutas prontas para chamar, pela ordem da programação |
 | Transmissão | Endereço do YouTube/Facebook por área, pôr e tirar do ar, sobreposição para o OBS |
 
 Um reembolso confirmado passa o pagamento a `REFUNDED` e cancela a inscrição. Uma inscrição paga só se cancela reembolsando-a.
+
+### Equipa da organização
+
+Cada organização tem uma equipa (`/manage/organizers/<id>/team`, ligada no painel). Como na administração, a pessoa cria conta no site, confirma o e-mail e o dono acrescenta-a pelo e-mail; ela recebe um e-mail ao entrar. Os papéis (`lib/organizer-permissions.ts`) valem nas páginas e nas ações do servidor:
+
+| Papel | Pode |
+|---|---|
+| Dono | Tudo, incluindo a equipa e o IBAN e os dados de faturação da organização |
+| Gestor | Criar e gerir eventos, categorias, chaves, programação, descontos, inscrições e reembolsos |
+| Mesário | Dia da prova: pesagem, placar, áreas e transmissão; vê as inscrições, as chaves e a programação |
+
+Uma organização nunca fica sem dono: o último não pode sair nem perder o papel. Qualquer membro pode sair da organização.
+
+### Dupla eliminação
+
+A chave principal é uma eliminação simples; quem perde nela cai na chave dos vencidos, onde uma segunda derrota elimina. Os vencedores das duas chaves encontram-se na final, uma luta única (sem segunda final). Precisa de pelo menos 3 atletas. Pódio: 1.º e 2.º da final, 3.º quem perde a final dos vencidos e 4.º quem perde a ronda anterior dela. As passagens diretas na chave dos vencidos (quando a principal teve byes) resolvem-se sozinhas.
+
+### Programação
+
+Cada categoria é disputada numa área. "Gerar programação" põe as lutas de cada área por ordem: primeiro as primeiras rondas de todas as categorias da área, depois as segundas, para os atletas descansarem, e nunca uma luta antes das que a alimentam. Cada luta ocupa os minutos por luta do evento (a luta e a troca de atletas), a partir da hora de início da área. Pode gerar-se de novo a qualquer momento; as lutas já disputadas ou no placar não mudam. O programa público fica em `/events/<evento>/schedule`, e a área e a hora prevista aparecem também nas chaves.
 
 ## Modelo de negócio
 
@@ -67,7 +88,7 @@ Federações e ligas têm uma página própria em `/f/<identificador>` e um pain
 
 As organizações dão o seu identificador (no painel, por baixo do nome) à federação, que as autoriza; depois escolhem a federação na Página do evento. As quotas de filiação vão inteiras para a federação, pelo mesmo sistema de repasses: a Camps é paga pela assinatura, não pelas quotas. A federação pode reembolsar uma quota (sempre o valor total, pelo provedor que cobrou ou registando uma devolução feita fora da plataforma): a filiação é cancelada e o valor sai do extrato; se a quota já tinha sido transferida, a federação fica em dívida. O seed cria a "Federação Demo de Jiu-Jitsu de Angola" (`/f/federacao-demo`), Premium, com a Copa Camps sob ela.
 
-Ainda não implementado (precisa de decisão): transmissão paga (exige contratar alojamento de vídeo, por exemplo Mux ou Cloudflare Stream) e gestão de academias (produto à parte).
+Ainda não implementado: check-in no dia da prova, competições por equipas e, por decidir, transmissão paga (exige contratar alojamento de vídeo, por exemplo Mux ou Cloudflare Stream) e gestão de academias (produto à parte).
 
 Antes de cobrar em produção, confirmar com um jurista e com a ProxyPay o enquadramento de receber pagamentos em nome dos organizadores e a faturação da taxa com IVA.
 

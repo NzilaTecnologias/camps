@@ -13,6 +13,7 @@ import {
   listDivisionsSummary,
   listEventRegistrations,
 } from "@/server/organizer";
+import { canOrganizer } from "@/lib/organizer-permissions";
 import { cancelRegistrationAction } from "../../../event-actions";
 
 const TABS = [
@@ -160,6 +161,7 @@ async function Registrations({
                 </td>
                 <td className="px-4 py-3 text-right">
                   {registration.status !== "CANCELLED" &&
+                    canOrganizer(event.role, "event") &&
                     (paidOnline ? (
                       <Link
                         href={`/manage/events/${event.id}/payments#pagamento-${payment.id}`}

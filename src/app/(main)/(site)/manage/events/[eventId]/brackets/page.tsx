@@ -5,8 +5,9 @@ import { SelectField } from "@/components/field";
 import { DataTable, SectionHeader } from "@/components/manage/parts";
 import { Badge, Card, Empty, LinkButton, buttonClass } from "@/components/ui";
 import { BRACKET_TYPE_LABEL } from "@/lib/format";
+import { canOrganizer } from "@/lib/organizer-permissions";
 import { requireUser } from "@/server/auth";
-import { listDivisionsSummary } from "@/server/organizer";
+import { getEventWorkspace, listDivisionsSummary } from "@/server/organizer";
 import { generateBracketAction } from "../../../actions";
 import { generateMissingBracketsAction } from "../../../event-actions";
 
@@ -30,7 +31,9 @@ function TypeSelect({ defaultValue = "SINGLE_ELIMINATION" }: { defaultValue?: st
 async function Brackets({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = await params;
   const user = await requireUser();
-  const divisions = await listDivisionsSummary(user.id, eventId);
+  const [event, divisions] = await Promise.all([getEventWorkspace(user.id, eventId), listDivisionsSummary(user.id, eventId)]);
+  if (!event) return null;
+  const manages = canOrganizer(event.role, "event");
   const missing = divisions.filter((division) => !division.bracket).length;
 
   return (
@@ -40,7 +43,7 @@ async function Brackets({ params }: { params: Promise<{ eventId: string }> }) {
         description="O chaveamento usa os atletas confirmados que não chumbaram na pesagem, separa colegas da mesma academia na primeira ronda e dá passagem direta quando o número não fecha. Uma chave pode ser regerada até à primeira luta terminar."
       />
 
-      {divisions.length > 0 && missing > 0 && (
+      {manages && divisions.length > 0 && missing > 0 && (
         <Card className="mb-6 flex flex-wrap items-center justify-between gap-4 p-5">
           <div>
             <p className="font-semibold">
@@ -106,7 +109,7 @@ async function Brackets({ params }: { params: Promise<{ eventId: string }> }) {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
-                    {finished === 0 && eligible >= 2 && (
+                    {manages && finished === 0 && eligible >= 2 && (
                       <ActionForm action={generateBracketAction.bind(null, division.id)} className="flex items-center gap-2">
                         <TypeSelect defaultValue={bracket?.type} />
                         <button type="submit" className={`${buttonClass(bracket ? "secondary" : "primary", "sm")} whitespace-nowrap`}>

@@ -2,9 +2,10 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Field, SelectField } from "@/components/field";
-import { DataTable, SectionHeader } from "@/components/manage/parts";
+import { DataTable, NoAccess, SectionHeader } from "@/components/manage/parts";
 import { Badge, Card, Empty, Icon } from "@/components/ui";
 import { BRACKET_TYPE_LABEL, formatMoney, formatWeight } from "@/lib/format";
+import { canOrganizer } from "@/lib/organizer-permissions";
 import { requireUser } from "@/server/auth";
 import { getEventWorkspace, listDivisionsSummary } from "@/server/organizer";
 import { createDivisionAction } from "../../../actions";
@@ -14,6 +15,7 @@ async function Divisions({ params }: { params: Promise<{ eventId: string }> }) {
   const user = await requireUser();
   const [event, divisions] = await Promise.all([getEventWorkspace(user.id, eventId), listDivisionsSummary(user.id, eventId)]);
   if (!event) return null;
+  if (!canOrganizer(event.role, "event")) return <NoAccess />;
 
   return (
     <>

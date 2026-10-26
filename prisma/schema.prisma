@@ -66,6 +66,8 @@ enum RefundStatus {
 
 enum BracketType {
   SINGLE_ELIMINATION
+  /// Chave principal e chave dos vencidos: só sai quem perde duas vezes.
+  DOUBLE_ELIMINATION
   ROUND_ROBIN
 }
 
@@ -327,6 +329,8 @@ model Event {
   paidRegistrations    Int         @default(0)
   /// Taxa da Camps por atleta confirmado, fixada quando o evento é criado (ver server/billing.ts).
   platformFeeCents     Int         @default(50000)
+  /// Minutos que cada luta ocupa na programação: a luta mais a troca de atletas.
+  matchMinutes         Int         @default(8)
   createdAt            DateTime    @default(now())
 
   organizer          Organizer      @relation(fields: [organizerId], references: [id])
@@ -363,12 +367,16 @@ model Division {
   maxWeightKg Decimal? @db.Decimal(5, 2)
   priceCents  Int
   capacity    Int?
+  /// Área de luta onde a categoria é disputada, para a programação (server/schedule.ts).
+  matId       String?
 
   event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  mat           Mat?           @relation(fields: [matId], references: [id], onDelete: SetNull)
   registrations Registration[]
   bracket       Bracket?
 
   @@index([eventId])
+  @@index([matId])
 }
 
 model Coupon {
@@ -511,9 +519,12 @@ model Mat {
   /// Endereço da transmissão (YouTube ou Facebook) desta área.
   streamUrl      String?
   isLive         Boolean @default(false)
+  /// Hora da primeira luta da área na programação.
+  startsAt       DateTime?
 
-  event        Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  matches      Match[] @relation("MatMatches")
+  event        Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  divisions    Division[]
+  matches      Match[]    @relation("MatMatches")
   currentMatch Match?  @relation("CurrentMatch", fields: [currentMatchId], references: [id], onDelete: SetNull)
 
   @@unique([eventId, name])

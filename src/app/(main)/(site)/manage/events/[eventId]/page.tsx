@@ -4,6 +4,7 @@ import { SectionHeader, StatTile } from "@/components/manage/parts";
 import { RegistrationStatusBadge } from "@/components/status-badges";
 import { Card, Empty, Icon } from "@/components/ui";
 import { formatMoney } from "@/lib/format";
+import { canOrganizer, type OrganizerPermission } from "@/lib/organizer-permissions";
 import { requireUser } from "@/server/auth";
 import { getEventOverview, getEventWorkspace } from "@/server/organizer";
 
@@ -53,16 +54,18 @@ async function Overview({ params }: { params: Promise<{ eventId: string }> }) {
   const [event, stats] = await Promise.all([getEventWorkspace(user.id, eventId), getEventOverview(user.id, eventId)]);
   if (!event) return null;
   const base = `/manage/events/${event.id}`;
+  const can = (permission: OrganizerPermission) => canOrganizer(event.role, permission);
 
-  const steps: Step[] = [
-    { done: Boolean(event.description && event.venue), label: "Completar a página do evento", hint: "Descrição, local e mapa", href: `${base}/settings` },
-    { done: stats.divisions > 0, label: "Criar as categorias", hint: "Sexo, faixa, peso e preço", href: `${base}/divisions` },
-    { done: event.status === "PUBLISHED", label: "Publicar o evento", hint: "Abre as inscrições ao público", href: base },
-    { done: stats.paid > 0, label: "Receber inscrições", hint: "Partilhe a página do evento", href: `${base}/registrations` },
-    { done: stats.paid > 0 && stats.weighed >= stats.paid, label: "Fazer a pesagem", hint: `${stats.weighed} de ${stats.paid} atletas pesados`, href: `${base}/weigh-in` },
-    { done: stats.divisions > 0 && stats.brackets >= stats.divisions, label: "Gerar as chaves", hint: `${stats.brackets} de ${stats.divisions} categorias`, href: `${base}/brackets` },
-    { done: stats.mats > 0, label: "Preparar as áreas de luta", hint: "Um placar por tatami", href: `${base}/scoreboard` },
-    { done: stats.liveMats > 0, label: "Iniciar a transmissão", hint: "YouTube ou Facebook", href: `${base}/streaming` },
+  const steps: (Step & { permission: OrganizerPermission })[] = [
+    { done: Boolean(event.description && event.venue), label: "Completar a página do evento", hint: "Descrição, local e mapa", href: `${base}/settings`, permission: "event" },
+    { done: stats.divisions > 0, label: "Criar as categorias", hint: "Sexo, faixa, peso e preço", href: `${base}/divisions`, permission: "event" },
+    { done: event.status === "PUBLISHED", label: "Publicar o evento", hint: "Abre as inscrições ao público", href: base, permission: "event" },
+    { done: stats.paid > 0, label: "Receber inscrições", hint: "Partilhe a página do evento", href: `${base}/registrations`, permission: "view" },
+    { done: stats.paid > 0 && stats.weighed >= stats.paid, label: "Fazer a pesagem", hint: `${stats.weighed} de ${stats.paid} atletas pesados`, href: `${base}/weigh-in`, permission: "floor" },
+    { done: stats.divisions > 0 && stats.brackets >= stats.divisions, label: "Gerar as chaves", hint: `${stats.brackets} de ${stats.divisions} categorias`, href: `${base}/brackets`, permission: "event" },
+    { done: stats.scheduled > 0, label: "Programar as lutas", hint: "Áreas e horas de início", href: `${base}/schedule`, permission: "event" },
+    { done: stats.mats > 0, label: "Preparar as áreas de luta", hint: "Um placar por tatami", href: `${base}/scoreboard`, permission: "floor" },
+    { done: stats.liveMats > 0, label: "Iniciar a transmissão", hint: "YouTube ou Facebook", href: `${base}/streaming`, permission: "floor" },
   ];
 
   return (
@@ -78,21 +81,25 @@ async function Overview({ params }: { params: Promise<{ eventId: string }> }) {
           hint={`${stats.incomplete} por pagar · ${stats.cancelled} canceladas`}
           href={`${base}/registrations`}
         />
-        <StatTile
-          icon="wallet"
-          tone="success"
-          label="Receita líquida"
-          value={formatMoney(stats.netCents, event.currency)}
-          hint={stats.refundedCents > 0 ? `${formatMoney(stats.refundedCents, event.currency)} reembolsados` : "Sem reembolsos"}
-          href={`${base}/payments`}
-        />
-        <StatTile
-          icon="ticket"
-          label="Cupões ativos"
-          value={stats.coupons}
-          hint={event.earlyDiscountPercent ? `Desconto antecipado de ${event.earlyDiscountPercent}%` : "Sem desconto antecipado"}
-          href={`${base}/discounts`}
-        />
+        {can("money") && (
+          <StatTile
+            icon="wallet"
+            tone="success"
+            label="Receita líquida"
+            value={formatMoney(stats.netCents, event.currency)}
+            hint={stats.refundedCents > 0 ? `${formatMoney(stats.refundedCents, event.currency)} reembolsados` : "Sem reembolsos"}
+            href={`${base}/payments`}
+          />
+        )}
+        {can("event") && (
+          <StatTile
+            icon="ticket"
+            label="Cupões ativos"
+            value={stats.coupons}
+            hint={event.earlyDiscountPercent ? `Desconto antecipado de ${event.earlyDiscountPercent}%` : "Sem desconto antecipado"}
+            href={`${base}/discounts`}
+          />
+        )}
         <StatTile
           icon="scale"
           tone={stats.paid > 0 && stats.weighed >= stats.paid ? "success" : "warning"}
@@ -147,7 +154,7 @@ async function Overview({ params }: { params: Promise<{ eventId: string }> }) {
             </Card>
           )}
         </section>
-        <Checklist steps={steps} />
+        <Checklist steps={steps.filter((step) => can(step.permission))} />
       </div>
     </>
   );

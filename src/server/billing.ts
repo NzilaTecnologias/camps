@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { UserError } from "@/lib/errors";
 import { computeStatement, normalizeAngolanIban, type Statement } from "@/lib/statement";
 import { can } from "@/lib/admin-permissions";
+import { rolesWith } from "@/lib/organizer-permissions";
 import { audit, type Staff } from "./admin/session";
 import { billingDetails, invoiceEventFee, listEventInvoices, type BillingDetailsInput } from "./invoicing";
 import { memberOf } from "./manage";
@@ -77,7 +78,7 @@ async function statements(filter: Prisma.Sql, limit = MAX_QUEUE): Promise<EventS
 
 /** Extrato de um evento, só para quem pertence à organização. */
 export async function getEventStatement(userId: string, eventId: string) {
-  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId) }, select: { id: true } });
+  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId, "money") }, select: { id: true } });
   if (!event) return null;
   const [statement] = await statements(Prisma.sql`e.id = ${event.id}`, 1);
   const [payouts, invoices, billing] = await Promise.all([
@@ -93,8 +94,7 @@ export async function getEventStatement(userId: string, eventId: string) {
 
 /** Conta onde o organizador recebe os repasses. */
 export async function updatePayoutDetails(userId: string, organizerId: string, holder: string, iban: string) {
-  const membership = await prisma.organizerMember.findUnique({ where: { organizerId_userId: { organizerId, userId } } });
-  if (!membership) throw new UserError("Organização não encontrada");
+  await requirePayoutAccess(userId, organizerId);
   const name = holder.trim();
   if (name.length < 3 || name.length > 120) throw new UserError("Indique o titular da conta");
   const normalized = normalizeAngolanIban(iban);
@@ -140,7 +140,14 @@ export async function invoiceEventFeeNow(staff: Staff, eventId: string): Promise
 
 /** Nome, NIF e morada da organização para as faturas da taxa. */
 export async function updateOrganizerBilling(userId: string, organizerId: string, input: BillingDetailsInput) {
-  const membership = await prisma.organizerMember.findUnique({ where: { organizerId_userId: { organizerId, userId } } });
-  if (!membership) throw new UserError("Organização não encontrada");
+  await requirePayoutAccess(userId, organizerId);
   await prisma.organizer.update({ where: { id: organizerId }, data: billingDetails(input) });
+}
+
+/** O IBAN e os dados de faturação só os muda o dono da organização. */
+async function requirePayoutAccess(userId: string, organizerId: string) {
+  const membership = await prisma.organizerMember.findFirst({
+    where: { organizerId, userId, role: { in: rolesWith("payout") } },
+  });
+  if (!membership) throw new UserError("Só o dono da organização pode mudar a conta e os dados de faturação");
 }

@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   BRONZE_KEY,
+  GRAND_FINAL_KEY,
+  doubleEliminationPlacements,
+  generateDoubleElimination,
   generateRoundRobin,
   generateSingleElimination,
+  recordDoubleEliminationResult,
   recordResult,
   roundRobinPlacements,
   seedOrder,
@@ -127,6 +131,86 @@ describe("eliminação simples", () => {
 
   it("recusa chave com menos de 2 competidores", () => {
     expect(() => generateSingleElimination(athletes(1))).toThrow();
+  });
+});
+
+describe("dupla eliminação", () => {
+  /** Joga a chave inteira; `pick` escolhe o vencedor de cada luta. */
+  function playDouble(matches: BracketMatch[], pick: (m: BracketMatch) => string): BracketMatch[] {
+    let current = matches;
+    for (let guard = 0; guard < 500; guard++) {
+      const ready = current.find((m) => m.status === "ready");
+      if (!ready) return current;
+      current = recordDoubleEliminationResult(current, ready.key, pick(ready));
+    }
+    throw new Error("a chave não termina");
+  }
+
+  const losses = (matches: BracketMatch[]) => {
+    const count = new Map<string, number>();
+    for (const m of matches.filter((x) => x.status === "finished")) {
+      const loser = (m.winner === m.red ? m.blue : m.red) as string;
+      count.set(loser, (count.get(loser) ?? 0) + 1);
+    }
+    return count;
+  };
+
+  it("gera 7 lutas na principal, 6 na dos vencidos e a final para 8 competidores", () => {
+    const matches = generateDoubleElimination(athletes(8), fixedRng);
+    expect(matches.filter((m) => m.key.startsWith("W"))).toHaveLength(7);
+    expect(matches.filter((m) => m.key.startsWith("L"))).toHaveLength(6);
+    expect(byKey(matches, GRAND_FINAL_KEY)).toMatchObject({ status: "pending", next: null });
+  });
+
+  it("manda quem perde na principal para a chave dos vencidos", () => {
+    let matches = generateDoubleElimination(athletes(4).map((c, i) => ({ ...c, seed: i + 1 })));
+    matches = recordDoubleEliminationResult(matches, "W1-M1", "a1");
+    matches = recordDoubleEliminationResult(matches, "W1-M2", "a2");
+    expect(byKey(matches, "L1-M1")).toMatchObject({ red: "a4", blue: "a3", status: "ready" });
+    expect(byKey(matches, "W2-M1")).toMatchObject({ red: "a1", blue: "a2", status: "ready" });
+  });
+
+  it("calcula o pódio: final, final dos vencidos e a ronda antes dela", () => {
+    const seeded = athletes(4).map((c, i) => ({ ...c, seed: i + 1 }));
+    const matches = playDouble(generateDoubleElimination(seeded), (m) => m.red as string);
+    expect(doubleEliminationPlacements(matches)).toEqual([
+      { competitorId: "a1", place: 1 },
+      expect.objectContaining({ place: 2 }),
+      expect.objectContaining({ place: 3 }),
+      expect.objectContaining({ place: 4 }),
+    ]);
+  });
+
+  it("resolve as passagens diretas da chave dos vencidos com 3 competidores", () => {
+    const matches = playDouble(generateDoubleElimination(athletes(3), fixedRng), (m) => m.blue as string);
+    expect(matches.every((m) => m.status === "finished" || m.status === "bye")).toBe(true);
+    expect(doubleEliminationPlacements(matches).map((p) => p.place)).toEqual([1, 2, 3]);
+  });
+
+  it.each(Array.from({ length: 14 }, (_, i) => i + 3))(
+    "com %i competidores a chave termina e só sai quem perde duas vezes",
+    (n) => {
+      let state = n * 7919;
+      const rng = () => (state = (state * 16807) % 2147483647) / 2147483647;
+      const matches = playDouble(generateDoubleElimination(athletes(n), rng), (m) => (rng() < 0.5 ? m.red : m.blue) as string);
+
+      expect(matches.every((m) => m.status === "finished" || m.status === "bye")).toBe(true);
+      const final = byKey(matches, GRAND_FINAL_KEY);
+      expect(final.status).toBe("finished");
+      const count = losses(matches);
+      for (const id of athletes(n).map((c) => c.id)) {
+        // O campeão perde no máximo uma vez; quem perde a final pode ter caído só nela.
+        if (id === final.winner) expect(count.get(id) ?? 0).toBeLessThanOrEqual(1);
+        else if (id === final.red || id === final.blue) expect([1, 2]).toContain(count.get(id));
+        else expect(count.get(id)).toBe(2);
+      }
+      const places = doubleEliminationPlacements(matches).map((p) => p.place);
+      expect(places.slice(0, 3)).toEqual([1, 2, 3]);
+    },
+  );
+
+  it("recusa menos de 3 competidores", () => {
+    expect(() => generateDoubleElimination(athletes(2))).toThrow();
   });
 });
 
