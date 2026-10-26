@@ -64,8 +64,10 @@ ENV NODE_ENV=production \
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
-# Cache das imagens otimizadas pelo next/image: o servidor escreve aqui.
-RUN mkdir -p .next/cache && chown -R node:node .next/cache
+# Cache das imagens otimizadas pelo next/image e imagens carregadas pelos organizadores
+# (UPLOADS_DIR, um volume no docker-compose): o servidor escreve nas duas.
+RUN mkdir -p .next/cache uploads && chown -R node:node .next/cache uploads
+ENV UPLOADS_DIR=/app/uploads
 
 USER node
 EXPOSE 3000

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { cache } from "react";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
@@ -5,9 +6,11 @@ import { UserError } from "@/lib/errors";
 import { UTC_OFFSET } from "@/lib/format";
 import { planActive, premiumActive } from "@/lib/federation-rules";
 import { parseLatLng } from "@/lib/geo";
+import { IMAGE_TYPES, MAX_IMAGE_BYTES, sniffImageType } from "@/lib/image-file";
 import { SPORT_NAMES } from "@/lib/sports";
 import { MIN_COMPETITORS, createBracket, parseBracketKind } from "./brackets";
 import { memberOf } from "./manage";
+import { storage } from "./storage";
 
 // Consultas e ações das secções do painel de um evento. Tudo passa por memberOf:
 // só quem pertence à organização do evento vê ou mexe.
@@ -134,6 +137,31 @@ export async function updateEventSettings(userId: string, eventId: string, input
       registrationClosesAt,
     },
   });
+}
+
+/** Guarda a imagem do evento (JPEG, PNG ou WebP até 5 MB) e apaga a anterior. */
+export async function setEventImage(userId: string, eventId: string, file: File | null) {
+  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId, "event") } });
+  if (!event) throw new UserError("Evento não encontrado");
+  if (!file || file.size === 0) throw new UserError("Escolha uma imagem");
+  if (file.size > MAX_IMAGE_BYTES) throw new UserError("A imagem pode ter no máximo 5 MB");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const type = sniffImageType(bytes);
+  if (!type) throw new UserError("A imagem tem de ser JPEG, PNG ou WebP");
+
+  const key = `events/${event.id}/${randomUUID()}.${IMAGE_TYPES[type]}`;
+  await storage().put(key, bytes);
+  await prisma.event.update({ where: { id: event.id }, data: { imageKey: key } });
+  if (event.imageKey) await storage().remove(event.imageKey);
+}
+
+/** Volta à fotografia da modalidade. */
+export async function removeEventImage(userId: string, eventId: string) {
+  const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId, "event") } });
+  if (!event) throw new UserError("Evento não encontrado");
+  if (!event.imageKey) return;
+  await prisma.event.update({ where: { id: event.id }, data: { imageKey: null } });
+  await storage().remove(event.imageKey);
 }
 
 export async function cancelEvent(userId: string, eventId: string) {

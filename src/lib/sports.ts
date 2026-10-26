@@ -1,6 +1,7 @@
+import { mediaUrl } from "./image-file";
+
 /**
- * Modalidades aceites num evento, com a fotografia usada no cartão enquanto
- * os eventos não têm imagem própria.
+ * Modalidades aceites num evento, com a fotografia usada nos eventos sem imagem própria.
  */
 export const SPORTS = [
   { name: "Jiu-Jitsu", image: "/images/jiu-jitsu.jpg" },
@@ -19,4 +20,9 @@ export const SPORT_NAMES: readonly string[] = SPORTS.map((sport) => sport.name);
 
 export function sportImage(sport: string): string {
   return SPORTS.find((entry) => entry.name === sport)?.image ?? "/hero/torneio.jpg";
+}
+
+/** A imagem que o organizador carregou ou, sem ela, a fotografia da modalidade. */
+export function eventImage(event: { sport: string; imageKey: string | null }): string {
+  return event.imageKey ? mediaUrl(event.imageKey) : sportImage(event.sport);
 }

@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { sportImage } from "@/lib/sports";
+import { eventImage } from "@/lib/sports";
 import type { LiveStream } from "@/server/community";
 import { Reveal } from "./reveal";
 import { Icon } from "./ui";
@@ -23,9 +23,9 @@ export function StreamCard({ stream }: { stream: LiveStream }) {
         className="group flex h-full flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-sm transition hover:-translate-y-0.5 hover:border-foreground/30 hover:shadow-lg"
       >
         <div className="relative aspect-video overflow-hidden bg-ink">
-          {/* O Facebook não dá miniatura: usa a fotografia da modalidade. */}
+          {/* O Facebook não dá miniatura: usa a imagem do evento. */}
           <Image
-            src={stream.thumbnailUrl ?? sportImage(stream.event.sport)}
+            src={stream.thumbnailUrl ?? eventImage(stream.event)}
             alt=""
             fill
             sizes="(min-width: 1280px) 300px, (min-width: 640px) 50vw, 100vw"

@@ -11,7 +11,9 @@ import {
   clearWeighIn,
   generateMissingBrackets,
   recordWeighIn,
+  removeEventImage,
   setEventFederation,
+  setEventImage,
   updateEventSettings,
 } from "@/server/organizer";
 import { updateOrganizerBilling, updatePayoutDetails } from "@/server/billing";
@@ -46,6 +48,25 @@ export async function updateEventSettingsAction(eventId: string, _state: ActionS
       latitude: text(formData, "latitude"),
       longitude: text(formData, "longitude"),
     });
+    publicDataChanged({ eventId, events: true, live: true });
+    refresh();
+  });
+}
+
+export async function setEventImageAction(eventId: string, _state: ActionState, formData: FormData) {
+  return runAction(async () => {
+    const user = await requireUser();
+    const file = formData.get("image");
+    await setEventImage(user.id, eventId, file instanceof File ? file : null);
+    publicDataChanged({ eventId, events: true, live: true });
+    refresh();
+  });
+}
+
+export async function removeEventImageAction(eventId: string) {
+  return runAction(async () => {
+    const user = await requireUser();
+    await removeEventImage(user.id, eventId);
     publicDataChanged({ eventId, events: true, live: true });
     refresh();
   });

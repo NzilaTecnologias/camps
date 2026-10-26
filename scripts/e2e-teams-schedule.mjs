@@ -43,8 +43,12 @@ class Browser {
     const html = (await this.get(path)).html.replace(/<script[\s\S]*?<\/script>/g, "");
     return (html.match(/<form[\s\S]*?<\/form>/g) ?? []).filter((f) => f.includes(marker))[nth];
   }
-  async submit(path, marker, fields = {}, nth = 0) {
-    const form = await this.form(path, marker, nth);
+  /** Envia, com a sessão deste navegador, um formulário que só `other` consegue ver. */
+  async replay(other, path, marker, fields = {}) {
+    return this.submit(path, marker, fields, 0, await other.form(path, marker));
+  }
+  async submit(path, marker, fields = {}, nth = 0, found = null) {
+    const form = found ?? (await this.form(path, marker, nth));
     if (!form) throw new Error(`formulário com "${marker}" não encontrado em ${path}`);
     const body = new FormData();
     for (const input of form.match(/<input[^>]*type="hidden"[^>]*>/g) ?? []) {
@@ -194,6 +198,31 @@ check("a dupla eliminação de 6 atletas joga-se até ao fim", played >= 9 && !r
 check("a chave fecha com pódio", page.includes("Pódio"), page.slice(-400));
 r = await new Browser().get(`/events/${slug}/schedule`);
 check("lutas terminadas aparecem como terminadas no programa", strip(r.html).includes("Terminada"));
+
+// ---------------------------------------------------------------- Imagem do evento
+// PNG de 1×1 píxel.
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+const settingsPath = `${eventPath}/settings`;
+const eventId = eventPath.split("/").pop();
+const mediaPath = (html) => html.match(new RegExp(`/media/events/${eventId}/[a-z0-9-]+\\.(?:png|jpg|webp)`))?.[0];
+r = await owner.submit(settingsPath, 'name="image"', { image: new File([Buffer.from("isto não é uma imagem")], "falsa.png", { type: "image/png" }) });
+check("um ficheiro que não é imagem é recusado, mesmo chamado .png", refused(r, "A imagem tem de ser JPEG, PNG ou WebP"));
+r = await staff.replay(owner, settingsPath, 'name="image"', { image: new File([PNG], "evento.png", { type: "image/png" }) });
+check("o mesário não muda a imagem", refused(r, "Evento não encontrado"));
+await owner.submit(settingsPath, 'name="image"', { image: new File([PNG], "evento.png", { type: "image/png" }) });
+r = await owner.get(settingsPath);
+const imagePath = mediaPath(r.html);
+check("a imagem carregada aparece na página do evento do painel", Boolean(imagePath), strip(r.html).slice(0, 200));
+let res = await fetch(BASE + imagePath);
+check("a imagem é servida como PNG e guardada em cache", res.status === 200 && res.headers.get("content-type") === "image/png" && /immutable/.test(res.headers.get("cache-control") ?? ""));
+r = await new Browser().get(`/events/${slug}`);
+check("a página pública mostra a imagem do evento", r.html.includes(encodeURIComponent(imagePath)) || r.html.includes(imagePath));
+res = await fetch(`${BASE}/media/events/${eventId}/..%2F..%2Fpackage.json`);
+check("o endereço das imagens não sai da pasta delas", res.status === 404);
+await owner.submit(settingsPath, "Tirar a imagem");
+r = await owner.get(settingsPath);
+check("tirar a imagem volta à fotografia da modalidade", !mediaPath(r.html) && strip(r.html).includes("Fotografia da modalidade"));
+check("o ficheiro da imagem tirada é apagado", (await fetch(BASE + imagePath)).status === 404);
 
 // ---------------------------------------------------------------- Tirar da equipa
 await owner.submit(teamPath, "Tirar da equipa", {}, 1);

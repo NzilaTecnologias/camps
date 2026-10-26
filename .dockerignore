@@ -13,3 +13,4 @@ deploy/backups
 .vscode
 .claude
 npm-debug.log*
+uploads

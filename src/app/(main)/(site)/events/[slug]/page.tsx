@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -10,6 +11,7 @@ import { parseStreamUrl } from "@/lib/stream";
 import { formatDate, formatMoney, formatWeight, count } from "@/lib/format";
 import { earlyDiscountActive } from "@/lib/pricing";
 import { planActive, premiumActive } from "@/lib/federation-rules";
+import { eventImage } from "@/lib/sports";
 import { getPublishedEvent } from "@/server/events";
 import { registrationClosedReason } from "@/server/registrations";
 import { Reveal } from "@/components/reveal";
@@ -36,7 +38,13 @@ async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
     <>
       <BackLink href="/events">Eventos</BackLink>
       <Reveal>
-        <header className="hero mt-3 mb-10 rounded-2xl px-6 py-10 sm:px-10">
+        <header className="hero relative isolate mt-3 mb-10 overflow-hidden rounded-2xl px-6 py-10 sm:px-10">
+          {event.imageKey && (
+            <>
+              <Image src={eventImage(event)} alt="" fill priority sizes="(min-width: 1152px) 1152px, 100vw" className="-z-20 object-cover" />
+              <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-r from-black/90 via-black/70 to-black/30" />
+            </>
+          )}
           <div className="flex flex-wrap items-center gap-3">
             {closedReason ? <Badge tone="inverse">{closedReason}</Badge> : <Badge tone="accent">Inscrições abertas</Badge>}
             {!closedReason && earlyDiscountActive(event) && (

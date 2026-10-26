@@ -120,7 +120,8 @@ antiga ainda funciona com ela ou restaure uma cópia (secção 6).
 ## 6. Cópias de segurança
 
 O serviço `backup` faz um `pg_dump` ao arrancar e depois todos os dias à hora `BACKUP_HOUR` de Luanda.
-As cópias ficam em `deploy/backups/` durante `BACKUP_KEEP_DAYS` dias.
+Na mesma hora guarda as imagens que os organizadores carregaram (volume `uploads`) num
+`camps-uploads-….tar.gz`. As cópias ficam em `deploy/backups/` durante `BACKUP_KEEP_DAYS` dias.
 
 **Leve as cópias para fora do servidor.** Se o servidor se perder, as cópias perdem-se com ele. Use por
 exemplo o `rclone`, com um cron diário, para um bucket S3, Backblaze B2 ou Google Drive:
@@ -136,6 +137,9 @@ exemplo o `rclone`, com um cron diário, para um bucket S3, Backblaze B2 ou Goog
 cd camps/deploy
 docker compose stop app
 docker compose exec -T db pg_restore -U camps -d camps --clean --if-exists < backups/camps-AAAAMMDD-HHMMSS.dump
+# As imagens dos eventos (volume camps_uploads), da cópia do mesmo dia:
+docker run --rm -v camps_uploads:/uploads -v "$PWD/backups:/backups:ro" alpine \
+  tar -xzf /backups/camps-uploads-AAAAMMDD-HHMMSS.tar.gz -C /uploads
 docker compose start app
 ```
 
@@ -169,6 +173,9 @@ Por ordem, à medida que for preciso:
      alivia os servidores em eventos grandes.
 4. **Vários servidores:** cada servidor corre o `app` com o mesmo `.env`, apontado para o mesmo Postgres
    e para um Redis partilhado (Redis gerido). À frente fica um balanceador que verifica `/api/health`.
+   As imagens dos eventos estão no volume `uploads` de um só servidor: antes de acrescentar o
+   segundo, passe-as para um armazenamento partilhado (Cloudflare R2 ou S3), com outra
+   implementação de `Storage` em `src/server/storage.ts`.
    Construa a imagem **uma vez** e use-a em todos os servidores, porque a chave das Server Actions é
    gerada na build. Se construir em cada servidor, defina `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` igual em
    todos (32 bytes em base64).

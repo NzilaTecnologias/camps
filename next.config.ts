@@ -35,6 +35,11 @@ const nextConfig: NextConfig = {
     remotePatterns: [{ protocol: "https", hostname: "i.ytimg.com", pathname: "/vi/**" }],
   },
   partialPrefetching: true,
+  experimental: {
+    // Por omissão um pedido a uma server action vai até 1 MB; as imagens dos eventos vão até 5 MB
+    // (lib/image-file.ts), mais a margem do multipart.
+    serverActions: { bodySizeLimit: "6mb" },
+  },
   turbopack: {
     rules: {
       "*.css": {

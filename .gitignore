@@ -46,3 +46,6 @@ next-env.d.ts
 
 # cópias de segurança do Postgres (deploy/backup.sh)
 /deploy/backups/
+
+# imagens carregadas pelos organizadores (UPLOADS_DIR, server/storage.ts)
+/uploads/

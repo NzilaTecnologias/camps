@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { calendarDaysBetween, count, dateParts, formatDateRange } from "@/lib/format";
-import { sportImage } from "@/lib/sports";
+import { eventImage } from "@/lib/sports";
 import type { PublishedEvent } from "@/server/events";
 import { registrationClosedReason } from "@/server/registrations";
 import { Badge, Icon } from "./ui";
@@ -32,7 +32,7 @@ export function EventCard({ event }: { event: PublishedEvent }) {
       >
         <div className="relative aspect-[16/9] overflow-hidden bg-ink">
           <Image
-            src={sportImage(event.sport)}
+            src={eventImage(event)}
             alt=""
             fill
             sizes="(min-width: 1280px) 300px, (min-width: 768px) 50vw, 100vw"

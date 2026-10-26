@@ -8,7 +8,7 @@ import { Badge, Card, Empty, Icon, LinkButton, PageTitle } from "@/components/ui
 import { PLAN_LABEL, planActive } from "@/lib/federation-rules";
 import { count, formatDateRange } from "@/lib/format";
 import { ORGANIZER_ROLE_LABEL, canOrganizer } from "@/lib/organizer-permissions";
-import { SPORTS, sportImage } from "@/lib/sports";
+import { SPORTS, eventImage } from "@/lib/sports";
 import { listMyFederations } from "@/server/federations";
 import { createFederationAction } from "./federation-actions";
 import { requireUser } from "@/server/auth";
@@ -25,7 +25,7 @@ function EventTile({ event }: { event: Organizer["events"][number] }) {
     >
       <div className="relative h-32 overflow-hidden">
         <Image
-          src={sportImage(event.sport)}
+          src={eventImage(event)}
           alt=""
           fill
           sizes="(min-width: 1024px) 22rem, (min-width: 640px) 50vw, 100vw"

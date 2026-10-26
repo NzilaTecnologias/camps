@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Field, SelectField, TextAreaField } from "@/components/field";
@@ -12,7 +13,14 @@ import { requireUser } from "@/server/auth";
 import { getEventWorkspace } from "@/server/organizer";
 import { PLAN_LABEL } from "@/lib/federation-rules";
 import { federationsForOrganizer } from "@/server/federations";
-import { cancelEventAction, setEventFederationAction, updateEventSettingsAction } from "../../../event-actions";
+import { eventImage } from "@/lib/sports";
+import {
+  cancelEventAction,
+  removeEventImageAction,
+  setEventFederationAction,
+  setEventImageAction,
+  updateEventSettingsAction,
+} from "../../../event-actions";
 
 function FormBlock({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return (
@@ -40,6 +48,46 @@ async function Settings({ params }: { params: Promise<{ eventId: string }> }) {
         title="Página do evento"
         description="O que aparece na página pública: nome, modalidade, datas, local e apresentação. As alterações ficam visíveis assim que gravar."
       />
+
+      <Card className="mb-8 p-6">
+        <div className="grid gap-6 md:grid-cols-[18rem_minmax(0,1fr)]">
+          <div className="relative aspect-[16/9] overflow-hidden rounded-lg bg-ink">
+            <Image src={eventImage(event)} alt="" fill sizes="18rem" className="object-cover" />
+            {!event.imageKey && (
+              <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">Fotografia da modalidade</span>
+            )}
+          </div>
+          <div>
+            <h3 className="font-semibold">Imagem do evento</h3>
+            <p className="mt-1 mb-4 text-sm text-muted">
+              Aparece no cartão do evento, no topo da página pública e no painel. JPEG, PNG ou WebP até 5 MB; fica melhor
+              na horizontal (16:9), por exemplo 1600 × 900. Sem imagem, usa-se uma fotografia da modalidade.
+            </p>
+            <ActionForm
+              action={setEventImageAction.bind(null, event.id)}
+              submitLabel={event.imageKey ? "Trocar imagem" : "Carregar imagem"}
+              submitVariant="secondary"
+              className="flex flex-col gap-3"
+            >
+              <input
+                type="file"
+                name="image"
+                accept="image/jpeg,image/png,image/webp"
+                required
+                aria-label="Imagem do evento"
+                className="text-sm file:mr-3 file:h-9 file:rounded-full file:border file:border-line file:bg-surface file:px-4 file:text-sm file:font-semibold file:text-foreground"
+              />
+            </ActionForm>
+            {event.imageKey && (
+              <div className="mt-3">
+                <ActionForm action={removeEventImageAction.bind(null, event.id)} submitLabel="Tirar a imagem" submitVariant="secondary">
+                  {null}
+                </ActionForm>
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
 
       <Card className="p-6">
         <ActionForm

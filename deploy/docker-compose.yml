@@ -3,7 +3,8 @@
 # Guia completo em docs/PRODUCAO.md.
 #
 #   Internet ──443──▶ caddy (HTTPS automático) ──▶ app ×N ──▶ db (Postgres) + redis
-#                                                  backup ──▶ ./backups (pg_dump diário)
+#                                                  │        └──▶ uploads (imagens dos eventos)
+#                                                  backup ──▶ ./backups (pg_dump e imagens, diário)
 #
 # Com Postgres gerido (fora deste servidor): preencher DATABASE_URL no .env e tirar "local-db"
 # de COMPOSE_PROFILES; os serviços db e backup deixam de arrancar.
@@ -46,6 +47,9 @@ services:
     restart: unless-stopped
     env_file: .env
     environment: *app-env
+    # Imagens carregadas pelos organizadores, partilhadas por todas as réplicas deste servidor.
+    volumes:
+      - uploads:/app/uploads
     deploy:
       # Um processo por vCPU. Todos correm a tarefa de fundo; o bloqueio no Redis deixa só um trabalhar.
       replicas: ${APP_REPLICAS:-2}
@@ -131,6 +135,7 @@ services:
     volumes:
       - ./backup.sh:/backup.sh:ro
       - ./backups:/backups
+      - uploads:/uploads:ro
     # Só depois das migrações: a cópia feita ao arrancar já tem as tabelas todas.
     depends_on:
       db:
@@ -141,5 +146,6 @@ services:
 
 volumes:
   pg-data:
+  uploads:
   caddy-data:
   caddy-config:

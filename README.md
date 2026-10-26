@@ -25,7 +25,7 @@ Cada evento tem um painel próprio em `/manage/events/<id>`, com um menu por sec
 | Secção | O que faz |
 |---|---|
 | Visão geral | Indicadores (inscrições, receita, pesagem, chaves, direto) e lista de próximos passos |
-| Página do evento | Nome, modalidade, descrição, datas, janela de inscrições, local e ponto no mapa; cancelar o evento |
+| Página do evento | Imagem do evento (JPEG, PNG ou WebP até 5 MB; sem ela, a fotografia da modalidade), nome, modalidade, descrição, datas, janela de inscrições, local e ponto no mapa; cancelar o evento |
 | Categorias | Criar categorias e abrir cada uma (chave, pódio, inscrição manual) |
 | Inscrições | Lista com filtros por estado, categoria e pesquisa; cancelar inscrições por pagar ou gratuitas |
 | Descontos e cupões | Desconto antecipado (percentagem até uma data) e cupões de percentagem ou valor fixo, com limite de usos e validade. Os dois acumulam |

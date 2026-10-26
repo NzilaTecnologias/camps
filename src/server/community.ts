@@ -226,7 +226,7 @@ const streamSelect = {
   id: true,
   name: true,
   streamUrl: true,
-  event: { select: { id: true, name: true, slug: true, city: true, sport: true } },
+  event: { select: { id: true, name: true, slug: true, city: true, sport: true, imageKey: true } },
   currentMatch: {
     select: {
       redScore: true,
