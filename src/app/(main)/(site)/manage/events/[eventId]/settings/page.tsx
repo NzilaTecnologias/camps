@@ -61,7 +61,8 @@ async function Settings({ params }: { params: Promise<{ eventId: string }> }) {
             <h3 className="font-semibold">Imagem do evento</h3>
             <p className="mt-1 mb-4 text-sm text-muted">
               Aparece no cartão do evento, no topo da página pública e no painel. JPEG, PNG ou WebP até 5 MB; fica melhor
-              na horizontal (16:9), por exemplo 1600 × 900. Sem imagem, usa-se uma fotografia da modalidade.
+              na horizontal (16:9), por exemplo 1600 × 900. A Camps reduz a imagem e apaga os dados escondidos da
+              fotografia, como a localização GPS. Sem imagem, usa-se uma fotografia da modalidade.
             </p>
             <ActionForm
               action={setEventImageAction.bind(null, event.id)}

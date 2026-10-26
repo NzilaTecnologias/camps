@@ -214,7 +214,13 @@ r = await owner.get(settingsPath);
 const imagePath = mediaPath(r.html);
 check("a imagem carregada aparece na página do evento do painel", Boolean(imagePath), strip(r.html).slice(0, 200));
 let res = await fetch(BASE + imagePath);
-check("a imagem é servida como PNG e guardada em cache", res.status === 200 && res.headers.get("content-type") === "image/png" && /immutable/.test(res.headers.get("cache-control") ?? ""));
+check(
+  "a imagem é guardada tratada, em WebP, e servida com cache longa",
+  imagePath?.endsWith(".webp") && res.status === 200 && res.headers.get("content-type") === "image/webp" && /immutable/.test(res.headers.get("cache-control") ?? ""),
+  `${imagePath} ${res.status} ${res.headers.get("content-type")}`,
+);
+r = await owner.submit(settingsPath, 'name="image"', { image: new File([Buffer.concat([PNG.subarray(0, 40), Buffer.alloc(200, 7)])], "partida.png", { type: "image/png" }) });
+check("uma imagem partida é recusada", refused(r, "Não foi possível ler a imagem"));
 r = await new Browser().get(`/events/${slug}`);
 check("a página pública mostra a imagem do evento", r.html.includes(encodeURIComponent(imagePath)) || r.html.includes(imagePath));
 res = await fetch(`${BASE}/media/events/${eventId}/..%2F..%2Fpackage.json`);

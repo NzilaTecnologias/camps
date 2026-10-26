@@ -6,9 +6,10 @@ import { UserError } from "@/lib/errors";
 import { UTC_OFFSET } from "@/lib/format";
 import { planActive, premiumActive } from "@/lib/federation-rules";
 import { parseLatLng } from "@/lib/geo";
-import { IMAGE_TYPES, MAX_IMAGE_BYTES, sniffImageType } from "@/lib/image-file";
+import { MAX_IMAGE_BYTES, sniffImageType } from "@/lib/image-file";
 import { SPORT_NAMES } from "@/lib/sports";
 import { MIN_COMPETITORS, createBracket, parseBracketKind } from "./brackets";
+import { normalizeImage } from "./images";
 import { memberOf } from "./manage";
 import { storage } from "./storage";
 
@@ -139,17 +140,21 @@ export async function updateEventSettings(userId: string, eventId: string, input
   });
 }
 
-/** Guarda a imagem do evento (JPEG, PNG ou WebP até 5 MB) e apaga a anterior. */
+/**
+ * Guarda a imagem do evento (JPEG, PNG ou WebP até 5 MB), já tratada (server/images.ts: rodada,
+ * reduzida, em WebP e sem metadados), e apaga a anterior.
+ */
 export async function setEventImage(userId: string, eventId: string, file: File | null) {
   const event = await prisma.event.findFirst({ where: { id: eventId, ...memberOf(userId, "event") } });
   if (!event) throw new UserError("Evento não encontrado");
   if (!file || file.size === 0) throw new UserError("Escolha uma imagem");
   if (file.size > MAX_IMAGE_BYTES) throw new UserError("A imagem pode ter no máximo 5 MB");
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const type = sniffImageType(bytes);
-  if (!type) throw new UserError("A imagem tem de ser JPEG, PNG ou WebP");
+  const original = new Uint8Array(await file.arrayBuffer());
+  // Antes de descodificar: o que não começa como JPEG, PNG ou WebP nem chega ao sharp.
+  if (!sniffImageType(original)) throw new UserError("A imagem tem de ser JPEG, PNG ou WebP");
+  const bytes = await normalizeImage(original);
 
-  const key = `events/${event.id}/${randomUUID()}.${IMAGE_TYPES[type]}`;
+  const key = `events/${event.id}/${randomUUID()}.webp`;
   await storage().put(key, bytes);
   await prisma.event.update({ where: { id: event.id }, data: { imageKey: key } });
   if (event.imageKey) await storage().remove(event.imageKey);
