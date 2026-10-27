@@ -26,7 +26,8 @@ export type EventFilters = {
   /** Eventos que decorrem, pelo menos em parte, entre estas datas. */
   from?: Date | null;
   to?: Date | null;
-  sort?: "date" | "popular";
+  /** recent: publicados há menos tempo primeiro (por omissão); date: pela data do evento. */
+  sort?: "recent" | "date" | "popular";
 };
 
 export const EVENTS_PER_PAGE = 24;
@@ -57,8 +58,9 @@ function eventWhere(filters: EventFilters, now: Date): Prisma.EventWhereInput {
 }
 
 /**
- * Uma página de eventos e o total que corresponde aos filtros. "Popular" usa as inscrições
- * pagas pré-calculadas pela tarefa de fundo, em vez de as contar em cada pedido.
+ * Uma página de eventos e o total que corresponde aos filtros. Por omissão, os publicados há
+ * menos tempo primeiro. "Popular" usa as inscrições pagas pré-calculadas pela tarefa de fundo, em
+ * vez de as contar em cada pedido.
  */
 export async function listEvents(filters: EventFilters, options: { take?: number; page?: number } = {}) {
   "use cache";
@@ -69,13 +71,17 @@ export async function listEvents(filters: EventFilters, options: { take?: number
   const upcoming = filters.when === "upcoming";
   const take = options.take ?? EVENTS_PER_PAGE;
   const where = eventWhere(filters, now);
+  const byDate = { startsAt: upcoming ? "asc" : "desc" } as const;
+  const orderBy: Prisma.EventOrderByWithRelationInput[] =
+    filters.sort === "popular"
+      ? [{ paidRegistrations: "desc" }, byDate]
+      : filters.sort === "date"
+        ? [byDate]
+        : [{ publishedAt: { sort: "desc", nulls: "last" } }, byDate];
   const [events, total] = await Promise.all([
     prisma.event.findMany({
       where,
-      orderBy:
-        filters.sort === "popular"
-          ? [{ paidRegistrations: "desc" }, { startsAt: upcoming ? "asc" : "desc" }]
-          : { startsAt: upcoming ? "asc" : "desc" },
+      orderBy,
       take,
       skip: Math.max(0, (options.page ?? 1) - 1) * take,
       include: eventCardInclude,
@@ -87,7 +93,7 @@ export async function listEvents(filters: EventFilters, options: { take?: number
 
 /** Próximos eventos publicados, do mais próximo para o mais distante. */
 export async function listPublishedEvents(take: number) {
-  return (await listEvents({ when: "upcoming" }, { take })).events;
+  return (await listEvents({ when: "upcoming", sort: "date" }, { take })).events;
 }
 
 /** Cidades com eventos publicados, para o filtro da lista. */
@@ -141,7 +147,7 @@ const athleteSummary = {
   select: {
     id: true,
     athlete: {
-      select: { firstName: true, lastName: true, academy: { select: { name: true } } },
+      select: { id: true, firstName: true, lastName: true, academy: { select: { name: true } } },
     },
   },
 } satisfies Prisma.RegistrationDefaultArgs;

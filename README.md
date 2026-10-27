@@ -16,7 +16,7 @@ npm run dev          # http://localhost:3000
 
 `npm run db:up` imprime a URL de conexão. Se a porta for diferente da que está em `.env`, atualize `DATABASE_URL`.
 
-Antes de arrancar, `npm run dev` apaga a cache de desenvolvimento do Next.js (`.next/dev`) se as dependências mudaram desde a última vez (`scripts/dev-cache-guard.mjs`). Uma cache de antes de uma atualização pode pôr a página a recarregar sem parar ("HMR hash mismatch" na consola). Se isso voltar a acontecer por outro motivo: parar o servidor, apagar `.next/dev` e correr `npm run dev`. Em produção não há esta cache nem recargas automáticas.
+Cada `npm run dev` começa com a cache de desenvolvimento do Next.js limpa (`scripts/dev-cache-guard.mjs` apaga `.next/dev`, a não ser que já haja um servidor a correr). Reaproveitada depois de o servidor morrer a meio ou de uma atualização, essa cache punha a página a recarregar sem parar ("HMR hash mismatch" na consola). Durante a sessão a cache funciona normalmente; o custo é a primeira página de cada arranque demorar um pouco mais. Não desligue `turbopackFileSystemCacheForDev`: nesta versão, as fontes do Google deixam de carregar. Em produção não há esta cache nem recargas automáticas.
 
 O seed cria a conta `organizador@camps.local` com a palavra-passe `camps-demo`, só para desenvolvimento local. O painel do organizador fica em `/manage`. Cria também a equipa de demonstração da administração (`/admin/login`): `admin@camps.local` / `camps-admin` (administrador), `financeiro@camps.local` / `camps-financeiro` e `suporte@camps.local` / `camps-suporte`.
 
@@ -153,7 +153,9 @@ Cada evento tem **áreas de luta** (geridas na página do evento, no painel). Ca
 
 Os endereços de TV e de sobreposição são fixos por área: mostram sempre a luta que estiver no placar dessa área e atualizam de segundo a segundo. Terminar a luta no placar grava o resultado na chave e liberta a área.
 
-A plataforma **não transporta vídeo**. A transmissão faz-se pelo YouTube ou pelo Facebook: o organizador cola o endereço na área e carrega em "Pôr em direto", e o leitor aparece na página pública do evento. Só são aceites endereços `https` desses dois serviços.
+A plataforma **não transporta vídeo**. A transmissão faz-se pelo YouTube ou pelo Facebook: o organizador cola o endereço na área e carrega em "Pôr em direto", e o leitor aparece na página pública do evento e em `/live/<área>`. Só são aceites endereços `https` desses dois serviços.
+
+**O placar por cima do vídeo é posto pela Camps**, sem OBS nem outro programa (`components/live-stage.tsx`): enquanto houver uma luta no placar da área, um placar pequeno acompanha o vídeo, e o botão "Ecrã inteiro" põe o vídeo e um placar maior a ocupar o ecrã, para televisão ou projetor. Quem vê pode esconder o placar. Só se vê na Camps; para o placar ficar dentro do próprio vídeo (visto também no YouTube), o organizador usa a Sobreposição no OBS, explicada na secção Transmissão do painel como opção avançada.
 
 O placar segue as regras da modalidade do evento (`src/lib/sport-rules.ts`): botões, nomes dos marcadores, durações e formas de vitória.
 

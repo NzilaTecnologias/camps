@@ -1,8 +1,10 @@
+import Link from "next/link";
 import type { BracketDetails, DivisionDetails } from "@/server/events";
 import { Avatar, Card, Empty } from "./ui";
 import { Reveal } from "./reveal";
 
-// Peças partilhadas pela página pública da categoria e pela do painel.
+// Peças partilhadas pela página pública da categoria e pela do painel. O nome de cada atleta
+// leva ao perfil dele (só os de eventos publicados o têm; nos outros o perfil responde 404).
 
 const MEDAL: Record<number, string> = {
   1: "bg-accent text-ink",
@@ -25,9 +27,9 @@ export function Podium({ placements }: { placements: BracketDetails["placements"
               </span>
               <span className="min-w-0">
                 <span className="sr-only"> — </span>
-                <span className="block truncate font-semibold">
+                <Link href={`/athletes/${placement.registration.athlete.id}`} className="block truncate font-semibold hover:text-primary">
                   {placement.registration.athlete.firstName} {placement.registration.athlete.lastName}
-                </span>
+                </Link>
                 <span className="block truncate text-xs text-muted">
                   {placement.registration.athlete.academy?.name ?? "Sem academia"}
                 </span>
@@ -52,7 +54,9 @@ export function RegistrantList({ registrations }: { registrations: DivisionDetai
               <Card className="flex items-center gap-3 px-4 py-3">
                 <Avatar name={name} />
                 <span className="min-w-0">
-                  <span className="block truncate font-medium">{name}</span>
+                  <Link href={`/athletes/${registration.athlete.id}`} className="block truncate font-medium hover:text-primary">
+                    {name}
+                  </Link>
                   <span className="block truncate text-xs text-muted">
                     {registration.athlete.academy?.name ?? "Sem academia"}
                   </span>

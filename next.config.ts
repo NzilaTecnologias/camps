@@ -39,6 +39,11 @@ const nextConfig: NextConfig = {
     // Por omissão um pedido a uma server action vai até 1 MB; as imagens dos eventos vão até 5 MB
     // (lib/image-file.ts), mais a margem do multipart.
     serverActions: { bodySizeLimit: "6mb" },
+    // A cache em disco do Turbopack em desenvolvimento fica ligada (sem ela, as fontes do Google não
+    // carregam nesta versão); quando fica estragada, scripts/dev-cache-guard.mjs apaga-a antes do
+    // arranque. A build do Docker começa sempre de uma camada limpa: uma cache que nunca é lida
+    // não serve.
+    turbopackFileSystemCacheForBuild: false,
   },
   turbopack: {
     rules: {

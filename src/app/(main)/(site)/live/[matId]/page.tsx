@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { LiveStage } from "@/components/live-stage";
 import { ScoreboardCard } from "@/components/scoreboard-live";
 import { LiveBadge, StreamCard } from "@/components/stream-card";
 import { BackLink, Empty, Icon, LinkButton, SectionTitle } from "@/components/ui";
@@ -47,16 +48,11 @@ async function WatchStream({ params }: { params: Promise<{ matId: string }> }) {
       </header>
 
       <div className="grid items-start gap-6 lg:grid-cols-[1fr_22rem]">
-        <div className="overflow-hidden rounded-xl border border-line bg-black shadow-sm">
-          <iframe
-            src={stream.embedUrl}
-            title={`Transmissão em direto: ${stream.event.name}, ${stream.matName}`}
-            className="aspect-video w-full"
-            allow="accelerometer; autoplay; encrypted-media; picture-in-picture; fullscreen"
-            allowFullScreen
-            referrerPolicy="strict-origin-when-cross-origin"
-          />
-        </div>
+        <LiveStage
+          embedUrl={stream.embedUrl}
+          title={`Transmissão em direto: ${stream.event.name}, ${stream.matName}`}
+          matId={stream.matId}
+        />
         <aside className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted">Placar da {stream.matName}</p>
           <ScoreboardCard matId={stream.matId} />

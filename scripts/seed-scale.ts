@@ -79,6 +79,7 @@ async function main() {
         registrationOpensAt: new Date(startsAt.getTime() - 60 * DAY),
         registrationClosesAt: new Date(startsAt.getTime() - DAY),
         status: "PUBLISHED" as const,
+        publishedAt: new Date(startsAt.getTime() - 60 * DAY),
       };
     }),
     (data) => prisma.event.createMany({ data, skipDuplicates: true }),

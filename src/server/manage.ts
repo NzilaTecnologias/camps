@@ -157,7 +157,12 @@ async function requireDivision(userId: string, divisionId: string) {
 export async function setEventStatus(userId: string, eventId: string, status: "DRAFT" | "PUBLISHED") {
   const event = await requireEvent(userId, eventId);
   if (event.status === "CANCELLED") throw new UserError("Evento cancelado não pode ser publicado");
-  await prisma.event.update({ where: { id: event.id }, data: { status } });
+  await prisma.event.update({ where: { id: event.id }, data: { status, ...publishedNow(event, status) } });
+}
+
+/** A data da primeira publicação, quando o evento passa a publicado pela primeira vez. */
+export function publishedNow(event: { publishedAt: Date | null }, status: string) {
+  return status === "PUBLISHED" && !event.publishedAt ? { publishedAt: new Date() } : {};
 }
 
 export type DivisionInput = {

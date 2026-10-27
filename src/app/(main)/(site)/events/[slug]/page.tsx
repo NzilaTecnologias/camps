@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { EventsMap } from "@/components/map/events-map";
+import { LiveStage } from "@/components/live-stage";
 import { ScoreboardCard } from "@/components/scoreboard-live";
 import { BackLink, Badge, Empty, Icon, RowList, SectionTitle } from "@/components/ui";
 import { eventLocation } from "@/lib/geo";
@@ -104,19 +105,17 @@ async function EventDetails({ params }: { params: Promise<{ slug: string }> }) {
           {streams.length > 0 && (
             <div className={`grid gap-4 ${streams.length > 1 ? "lg:grid-cols-2" : ""}`}>
               {streams.map((stream) => (
-                <figure key={stream.id} className="overflow-hidden rounded-xl border border-line bg-black shadow-sm">
-                  <iframe
-                    src={stream.embedUrl}
-                    title={`Transmissão em direto: ${stream.name}`}
-                    className="aspect-video w-full"
-                    allow="accelerometer; autoplay; encrypted-media; picture-in-picture; fullscreen"
-                    allowFullScreen
-                    loading="lazy"
-                    referrerPolicy="strict-origin-when-cross-origin"
-                  />
-                  <figcaption className="bg-surface px-4 py-2 text-sm font-semibold">
-                    {stream.name} <span className="font-normal text-muted">· via {stream.provider}</span>
+                <figure key={stream.id} className="min-w-0">
+                  <figcaption className="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm font-semibold">
+                    <span>
+                      {stream.name} <span className="font-normal text-muted">· via {stream.provider}</span>
+                    </span>
+                    <Link href={`/live/${stream.id}`} className="font-semibold text-primary hover:underline">
+                      Abrir a transmissão
+                    </Link>
                   </figcaption>
+                  {/* O placar da área aparece por cima do vídeo, posto pela Camps. */}
+                  <LiveStage embedUrl={stream.embedUrl} title={`Transmissão em direto: ${stream.name}`} matId={stream.id} />
                 </figure>
               ))}
             </div>

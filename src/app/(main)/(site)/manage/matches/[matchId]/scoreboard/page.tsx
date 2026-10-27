@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ActionForm } from "@/components/action-form";
 import { SelectField } from "@/components/field";
+import { Notice } from "@/components/manage/parts";
 import { LiveClock } from "@/components/scoreboard-live";
 import { BackLink, Badge, Card, LinkButton, PageTitle, buttonClass } from "@/components/ui";
 import { formatDuration, type ScoreboardState } from "@/lib/scoreboard";
@@ -85,6 +86,12 @@ async function ScoreboardControl({ params }: { params: Promise<{ matchId: string
   // Ao terminar a luta, a mesa volta à lista de áreas e lutas prontas.
   const deskPath = `/manage/events/${control.eventId}/scoreboard`;
   const isRunning = state.clock.startedAt !== null;
+  // O placar por cima da transmissão é o da área em direto: sem área prevista, propõe-se essa.
+  const liveMats = mats.filter((mat) => mat.isLive);
+  const defaultMatId = control.matId ?? (liveMats.length === 1 ? liveMats[0].id : (mats[0]?.id ?? ""));
+  // Com o placar já aberto, conta a área onde a luta está de facto (pode ser nenhuma).
+  const chosen = mats.find((mat) => mat.id === (control.isOpen ? control.matId : defaultMatId));
+  const offAir = liveMats.length > 0 && !chosen?.isLive;
 
   return (
     <>
@@ -95,6 +102,7 @@ async function ScoreboardControl({ params }: { params: Promise<{ matchId: string
           <p className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted">
             {state.red.name} × {state.blue.name}
             {state.matName ? <Badge tone="primary">{state.matName}</Badge> : <Badge>Sem área</Badge>}
+            {control.isOpen && chosen?.isLive && <Badge tone="danger">● Em direto: o placar aparece na transmissão</Badge>}
             <Badge>
               {state.sport} · regras {rules.rulebook}
             </Badge>
@@ -129,10 +137,11 @@ async function ScoreboardControl({ params }: { params: Promise<{ matchId: string
               submitVariant={control.isOpen ? "secondary" : "primary"}
               className="grid items-end gap-4 sm:grid-cols-[1fr_1fr_auto]"
             >
-              <SelectField label="Área de luta" name="matId" defaultValue={control.matId ?? mats[0]?.id ?? ""}>
+              <SelectField label="Área de luta" name="matId" defaultValue={defaultMatId}>
                 {mats.map((mat) => (
                   <option key={mat.id} value={mat.id}>
                     {mat.name}
+                    {mat.isLive && " · em direto"}
                   </option>
                 ))}
                 <option value="">Sem área (não aparece em ecrãs)</option>
@@ -152,6 +161,16 @@ async function ScoreboardControl({ params }: { params: Promise<{ matchId: string
               {/* Um campo desativado não é enviado; a duração já definida segue por aqui. */}
               {control.isOpen && <input type="hidden" name="durationSeconds" value={state.clock.durationSeconds} />}
             </ActionForm>
+            {offAir && (
+              <div className="mt-4">
+                <Notice>
+                  {chosen ? `A ${chosen.name} não está em direto` : "Sem área, a luta não aparece em nenhum ecrã"}: o placar desta luta{" "}
+                  <strong>não aparece por cima da transmissão</strong>. A transmissão está na{" "}
+                  <strong>{liveMats.map((mat) => mat.name).join(" e na ")}</strong>. Escolha essa área e carregue em{" "}
+                  {control.isOpen ? "Mudar de área" : "Abrir placar"}.
+                </Notice>
+              </div>
+            )}
           </Card>
 
           {control.isOpen && (

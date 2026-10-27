@@ -87,6 +87,7 @@ async function main() {
       registrationOpensAt: new Date(now - 30 * DAY),
       registrationClosesAt: new Date(now + 23 * DAY),
       status: "PUBLISHED",
+      publishedAt: new Date(now - 30 * DAY),
       sport: "Jiu-Jitsu",
       earlyDiscountPercent: 20,
       earlyDiscountEndsAt: new Date(now + 7 * DAY),
@@ -286,6 +287,8 @@ async function main() {
         registrationOpensAt: new Date(startsAt.getTime() - 60 * DAY),
         registrationClosesAt: new Date(startsAt.getTime() - 5 * DAY),
         status: "PUBLISHED",
+        // Publicados quando abriram as inscrições.
+        publishedAt: new Date(startsAt.getTime() - 60 * DAY),
         divisions: {
           create: [
             { name: "Adulto Masculino Absoluto", gender: "MALE", ageGroup: "Adulto", belt: "Todas", weightClass: "Absoluto", priceCents: 1_000_000 },

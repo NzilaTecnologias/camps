@@ -1,16 +1,13 @@
-// Corre antes de `npm run dev` (predev). Apaga a cache de desenvolvimento do Next.js (.next/dev)
-// quando as dependências mudaram desde a última vez (package-lock.json diferente): depois de
-// atualizar o Next.js ou acrescentar pacotes, uma cache antiga pode servir ao navegador código que
-// já não bate com o do servidor, e a página fica a recarregar sem parar ("HMR hash mismatch").
+// Corre antes de `npm run dev` (predev): começa cada sessão de desenvolvimento com a cache do
+// Next.js (.next/dev) limpa. Reaproveitada depois de o servidor morrer a meio (falta de memória,
+// janela fechada à força) ou de uma atualização, essa cache servia ao navegador código que já não
+// batia com o do servidor, e a página ficava a recarregar sem parar ("HMR hash mismatch").
+// Durante a sessão a cache funciona como sempre (as fontes do Google dependem dela); só não passa
+// de uma sessão para a outra. O custo é a primeira página de cada arranque compilar de novo.
 // Só afeta o desenvolvimento: em produção não há esta cache nem recargas automáticas.
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 
 const DEV_CACHE = ".next/dev";
-// Fora de .next/dev, para sobreviver quando a cache é apagada.
-const STAMP = ".next/dev-deps.sha256";
-
-const hash = createHash("sha256").update(readFileSync("package-lock.json")).digest("hex");
 
 function running(pid) {
   try {
@@ -29,10 +26,7 @@ try {
 } catch {}
 if (lock?.pid && running(lock.pid)) process.exit(0);
 
-const previous = existsSync(STAMP) ? readFileSync(STAMP, "utf8").trim() : null;
-if (previous !== hash && existsSync(DEV_CACHE)) {
+if (existsSync(DEV_CACHE)) {
   rmSync(DEV_CACHE, { recursive: true, force: true });
-  console.log("As dependências mudaram: a cache de desenvolvimento (.next/dev) foi apagada e vai ser refeita.");
+  console.log("Cache de desenvolvimento da sessão anterior apagada (.next/dev); a primeira página demora um pouco mais.");
 }
-mkdirSync(".next", { recursive: true });
-writeFileSync(STAMP, hash);

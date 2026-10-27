@@ -1,6 +1,8 @@
 import { cacheLife, cacheTag } from "next/cache";
 import type { Prisma } from "@/generated/prisma/client";
+import { athleteRecord } from "@/lib/athlete-record";
 import { prisma } from "@/lib/db";
+import { roundLabel } from "@/lib/round-label";
 import { parseStreamUrl } from "@/lib/stream";
 import { TAG } from "./cache-tags";
 
@@ -144,6 +146,30 @@ export async function listAthletes(search: string) {
   }));
 }
 
+const opponentSelect = {
+  select: { athlete: { select: { id: true, firstName: true, lastName: true, academy: { select: { name: true } } } } },
+} satisfies Prisma.RegistrationDefaultArgs;
+
+const boutSelect = {
+  id: true,
+  key: true,
+  round: true,
+  method: true,
+  redScore: true,
+  blueScore: true,
+  redId: true,
+  winnerId: true,
+  finishedAt: true,
+  bracketId: true,
+  bracket: { select: { type: true } },
+  red: opponentSelect,
+  blue: opponentSelect,
+} satisfies Prisma.MatchSelect;
+
+/**
+ * Perfil público de um atleta, ao estilo dos perfis do Smoothcomp: o registo de vitórias e
+ * derrotas, as vitórias por método, as medalhas e cada luta, com adversário, método e pontuação.
+ */
 export async function getAthlete(id: string) {
   "use cache";
   cacheLife("public");
@@ -155,7 +181,7 @@ export async function getAthlete(id: string) {
       lastName: true,
       belt: true,
       country: true,
-      academy: { select: { id: true, name: true } },
+      academy: { select: { id: true, name: true, affiliation: { select: { name: true } } } },
       registrations: {
         where: publicRegistration,
         orderBy: { event: { startsAt: "desc" } },
@@ -163,37 +189,71 @@ export async function getAthlete(id: string) {
           id: true,
           placement: { select: { place: true } },
           division: { select: { id: true, name: true } },
-          event: { select: { name: true, slug: true, startsAt: true } },
-          wonMatches: { where: { status: "FINISHED" }, select: { id: true } },
-          redMatches: { where: { status: "FINISHED" }, select: { id: true } },
-          blueMatches: { where: { status: "FINISHED" }, select: { id: true } },
+          event: { select: { name: true, slug: true, startsAt: true, endsAt: true, city: true, sport: true } },
+          redMatches: { where: { status: "FINISHED" }, select: boutSelect },
+          blueMatches: { where: { status: "FINISHED" }, select: boutSelect },
         },
       },
     },
   });
   if (!athlete) return null;
 
-  const history = athlete.registrations.map((registration) => {
-    const fights = registration.redMatches.length + registration.blueMatches.length;
-    const wins = registration.wonMatches.length;
+  // Última ronda de cada chave (na dupla eliminação, da principal), para dar nome às rondas.
+  const matches = athlete.registrations.flatMap((r) => [...r.redMatches, ...r.blueMatches]);
+  const bracketIds = [...new Set(matches.map((match) => match.bracketId))];
+  const lastRounds = new Map(
+    (
+      await prisma.match.groupBy({
+        by: ["bracketId"],
+        where: { bracketId: { in: bracketIds }, key: { notIn: ["BRONZE", "GF"] }, NOT: { key: { startsWith: "L" } } },
+        _max: { round: true },
+      })
+    ).map((row) => [row.bracketId, row._max.round ?? 1]),
+  );
+
+  const events = athlete.registrations.map((registration) => {
+    const bouts = [...registration.redMatches, ...registration.blueMatches]
+      .sort((a, b) => (a.finishedAt?.getTime() ?? 0) - (b.finishedAt?.getTime() ?? 0))
+      .map((match) => {
+        const isRed = match.redId === registration.id;
+        const opponent = isRed ? match.blue : match.red;
+        const [own, other] = isRed ? [match.redScore, match.blueScore] : [match.blueScore, match.redScore];
+        return {
+          id: match.id,
+          round: roundLabel(match.bracket.type, match, lastRounds.get(match.bracketId) ?? match.round),
+          won: match.winnerId === registration.id,
+          method: match.method,
+          score: `${own}–${other}`,
+          finishedAt: match.finishedAt,
+          opponent: opponent
+            ? {
+                id: opponent.athlete.id,
+                name: `${opponent.athlete.firstName} ${opponent.athlete.lastName}`,
+                academy: opponent.athlete.academy?.name ?? null,
+              }
+            : null,
+        };
+      });
     return {
       id: registration.id,
       event: registration.event,
       division: registration.division,
       place: registration.placement?.place ?? null,
-      fights,
-      wins,
+      bouts,
     };
   });
+
+  const allBouts = events.flatMap((entry) => entry.bouts);
+  const firstEvent = events.at(-1)?.event.startsAt;
   return {
     name: `${athlete.firstName} ${athlete.lastName}`,
     belt: athlete.belt,
     country: athlete.country,
-    academy: athlete.academy,
-    history,
-    fights: history.reduce((sum, entry) => sum + entry.fights, 0),
-    wins: history.reduce((sum, entry) => sum + entry.wins, 0),
-    medals: tally(history.flatMap((entry) => (entry.place ? [entry.place] : []))),
+    academy: athlete.academy ? { id: athlete.academy.id, name: athlete.academy.name, affiliation: athlete.academy.affiliation?.name ?? null } : null,
+    since: firstEvent ? firstEvent.getUTCFullYear() : null,
+    events,
+    record: athleteRecord(allBouts),
+    medals: tally(events.flatMap((entry) => (entry.place ? [entry.place] : []))),
   };
 }
 

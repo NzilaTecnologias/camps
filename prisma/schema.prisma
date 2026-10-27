@@ -315,6 +315,9 @@ model Event {
   registrationOpensAt  DateTime
   registrationClosesAt DateTime
   status               EventStatus @default(DRAFT)
+  /// Primeira vez que o evento foi publicado; a lista de eventos mostra primeiro os publicados há
+  /// menos tempo. Despublicar e voltar a publicar não muda a data.
+  publishedAt          DateTime?
   currency             String      @default("AOA") @db.Char(3)
   /// Modalidade principal (lista em src/lib/sports.ts).
   sport                String      @default("Jiu-Jitsu")
@@ -349,6 +352,7 @@ model Event {
   federation         Federation?    @relation(fields: [federationId], references: [id])
 
   @@index([status, startsAt])
+  @@index([status, publishedAt])
   @@index([status, paidRegistrations])
   @@index([federationId, startsAt])
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Event_name_trgm_idx")

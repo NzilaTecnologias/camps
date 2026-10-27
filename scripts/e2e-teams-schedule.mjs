@@ -180,6 +180,10 @@ page = strip(r.html);
 check("programa público com as duas áreas e as horas", r.status === 200 && page.includes("Tatami A") && page.includes("Tatami B") && /09:00/.test(page), page.slice(0, 300));
 r = await new Browser().get(`/events/${slug}`);
 check("a página do evento liga à programação", r.html.includes(`/events/${slug}/schedule`));
+// O evento acabou de ser publicado: é o primeiro da lista, embora seja daqui a dois dias.
+r = await new Browser().get("/events");
+const firstEvent = r.html.match(/href="\/events\/([\w-]+)"/)?.[1];
+check("a lista de eventos mostra primeiro o publicado há menos tempo", firstEvent === slug, `${firstEvent} ≠ ${slug}`);
 r = await staff.get(`${eventPath}/scoreboard`);
 check("as lutas prontas mostram a hora prevista", /prevista \d\d:\d\d/.test(strip(r.html)));
 
@@ -198,6 +202,19 @@ check("a dupla eliminação de 6 atletas joga-se até ao fim", played >= 9 && !r
 check("a chave fecha com pódio", page.includes("Pódio"), page.slice(-400));
 r = await new Browser().get(`/events/${slug}/schedule`);
 check("lutas terminadas aparecem como terminadas no programa", strip(r.html).includes("Terminada"));
+
+// Perfil de um atleta da chave jogada: registo, vitórias por método e cada luta com adversário e ronda.
+r = await new Browser().get(`/events/${slug}/divisions/${lightPath.split("/").pop()}`);
+const athleteIds = [...new Set([...r.html.matchAll(/href="\/athletes\/(\w+)"/g)].map((m) => m[1]))];
+check("a página da categoria liga aos perfis dos atletas", athleteIds.length === 6, JSON.stringify(athleteIds));
+r = await new Browser().get(`/athletes/${athleteIds[0]}`);
+page = strip(r.html);
+const recordMatch = page.match(/(\d+)\s*–\s*(\d+) Registo/);
+check("o perfil mostra o registo de vitórias e derrotas", Boolean(recordMatch) && Number(recordMatch[1]) + Number(recordMatch[2]) >= 2, page.slice(0, 400));
+check("o perfil reparte as vitórias e derrotas por método", page.includes("Vitórias por método") && page.includes("Derrotas por método"));
+check("o historial tem o evento e as rondas da dupla eliminação", page.includes(`Open Equipa ${stamp}`) && /Final|Chave dos vencidos|Semifinal|Quartos de final/.test(page));
+const opponents = [...r.html.matchAll(/href="\/athletes\/(\w+)"/g)].map((m) => m[1]).filter((id) => id !== athleteIds[0]);
+check("cada luta liga ao perfil do adversário", opponents.length >= 2);
 
 // ---------------------------------------------------------------- Imagem do evento
 // PNG de 1×1 píxel.

@@ -10,11 +10,20 @@ import { requireUser } from "@/server/auth";
 import { getEventWorkspace, listStreams } from "@/server/organizer";
 import { setMatLiveAction, setMatStreamAction } from "../../../scoreboard-actions";
 
+type Fighter = { athlete: { firstName: string; lastName: string } } | null;
+const fighterName = (fighter: Fighter) => (fighter ? `${fighter.athlete.firstName} ${fighter.athlete.lastName}` : "A definir");
+
+// O caminho simples, sem programas: a Camps põe o placar por cima do vídeo na página dela.
 const STEPS = [
-  { title: "Crie o direto", text: "No YouTube Studio ou no Facebook, crie uma transmissão em direto e copie o endereço do vídeo." },
-  { title: "Junte o placar", text: "No OBS, adicione a Sobreposição da área como fonte de navegador por cima da câmara." },
-  { title: "Cole o endereço", text: "Guarde o endereço do vídeo na área respetiva, aqui em baixo." },
-  { title: "Ponha no ar", text: "Carregue em Pôr em direto: o vídeo aparece na página do evento e em Transmissão." },
+  {
+    title: "Comece o direto",
+    text: "Na aplicação do YouTube ou do Facebook no telemóvel (ou no computador), comece uma transmissão em direto e copie o endereço do vídeo.",
+  },
+  { title: "Cole o endereço", text: "Cole-o na área de luta respetiva, aqui em baixo, e carregue em Guardar endereço." },
+  {
+    title: "Ponha no ar",
+    text: "Carregue em Pôr em direto. O vídeo aparece na página do evento com o placar da luta que estiver no placar dessa área, por cima, sozinho.",
+  },
 ];
 
 async function Streaming({ params }: { params: Promise<{ eventId: string }> }) {
@@ -27,10 +36,10 @@ async function Streaming({ params }: { params: Promise<{ eventId: string }> }) {
     <>
       <SectionHeader
         title="Transmissão"
-        description="O vídeo é transmitido pelo YouTube ou pelo Facebook; a Camps mostra-o na página do evento, ao lado do placar ao vivo."
+        description="O vídeo é transmitido pelo YouTube ou pelo Facebook. A Camps mostra-o na página do evento e põe o placar da luta por cima do vídeo, sem programas nem configurações."
       />
 
-      <ol className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <ol className="mb-8 grid gap-3 sm:grid-cols-3">
         {STEPS.map((step, index) => (
           <li key={step.title}>
             <Card className="h-full p-4">
@@ -108,21 +117,57 @@ async function Streaming({ params }: { params: Promise<{ eventId: string }> }) {
                     </ActionForm>
                   )}
 
-                  <div className="mt-auto flex flex-wrap gap-x-5 gap-y-1 border-t border-line pt-3 text-sm">
-                    <Link href={`/overlay/${mat.id}`} target="_blank" className="inline-flex items-center gap-1 font-semibold hover:text-primary">
-                      Sobreposição para o OBS <Icon name="external" className="h-3.5 w-3.5" />
-                    </Link>
-                    {mat.isLive && (
+                  {mat.isLive &&
+                    (mat.currentMatch ? (
+                      <p className="rounded-lg bg-success/10 px-3 py-2 text-sm">
+                        <strong>No placar e na transmissão:</strong> {fighterName(mat.currentMatch.red)} ×{" "}
+                        {fighterName(mat.currentMatch.blue)}
+                      </p>
+                    ) : (
+                      <Notice>
+                        Nenhuma luta no placar da {mat.name}: o placar só aparece por cima do vídeo quando chamar uma luta para
+                        esta área, em{" "}
+                        <Link href={`/manage/events/${event.id}/scoreboard`} className="font-semibold underline">
+                          Placar e áreas
+                        </Link>
+                        .
+                      </Notice>
+                    ))}
+
+                  {mat.isLive && (
+                    <div className="mt-auto border-t border-line pt-3 text-sm">
                       <Link href={`/live/${mat.id}`} target="_blank" className="inline-flex items-center gap-1 font-semibold hover:text-primary">
-                        Ver como o público <Icon name="external" className="h-3.5 w-3.5" />
+                        Ver como o público, com o placar por cima <Icon name="external" className="h-3.5 w-3.5" />
                       </Link>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </Card>
             );
           })}
         </div>
+      )}
+
+      {mats.length > 0 && (
+        <details className="mt-8 rounded-xl border border-line bg-surface p-5">
+          <summary className="cursor-pointer font-semibold">
+            Avançado: o placar dentro do próprio vídeo (para quem usa OBS)
+          </summary>
+          <p className="mt-3 max-w-3xl text-sm text-muted">
+            O placar por cima do vídeo só se vê na Camps. Se quiser que apareça também a quem vê diretamente no YouTube ou
+            no Facebook, transmita com o OBS Studio (ou programa semelhante) e acrescente o endereço da sobreposição da área
+            como fonte de navegador, com 1920 × 1080, por cima da câmara.
+          </p>
+          <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+            {mats.map((mat) => (
+              <li key={mat.id}>
+                <Link href={`/overlay/${mat.id}`} target="_blank" className="inline-flex items-center gap-1 font-semibold hover:text-primary">
+                  Sobreposição · {mat.name} <Icon name="external" className="h-3.5 w-3.5" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
 
       <div className="mt-6">

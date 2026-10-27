@@ -131,14 +131,17 @@ function OverlayCorner({ side, state }: { side: "red" | "blue"; state: Scoreboar
   );
 }
 
-/** Placar compacto com fundo transparente, para pôr por cima do vídeo no OBS ou programa semelhante. */
-export function ScoreboardOverlay({ matId }: { matId: string }) {
+/**
+ * Placar compacto com fundo transparente, para pôr por cima do vídeo no OBS ou programa semelhante.
+ * `position` muda onde fica (por omissão, no canto da janela da sobreposição).
+ */
+export function ScoreboardOverlay({ matId, position = "fixed bottom-8 left-8" }: { matId: string; position?: string }) {
   const state = useMatState(matId);
   const scoreboard = state?.scoreboard;
   if (!state || !scoreboard) return null;
 
   return (
-    <div className="fixed bottom-8 left-8 w-[30rem] overflow-hidden rounded-xl bg-black/85 text-white shadow-2xl">
+    <div className={`${position} w-[30rem] max-w-[calc(100%-2rem)] overflow-hidden rounded-xl bg-black/85 text-white shadow-2xl`}>
       <OverlayCorner side="red" state={scoreboard} />
       <div className="border-t border-white/15" />
       <OverlayCorner side="blue" state={scoreboard} />
@@ -147,6 +150,54 @@ export function ScoreboardOverlay({ matId }: { matId: string }) {
           {state.matName} · {scoreboard.divisionName}
         </p>
         <LiveClock clock={scoreboard.clock} serverNow={scoreboard.serverNow} className="text-xl font-bold" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Placar pequeno por cima do vídeo na página da Camps, como o das transmissões de televisão.
+ * Não apanha cliques: o leitor de vídeo por baixo continua a responder. Sem luta no placar,
+ * não aparece.
+ */
+export function ScoreboardBug({ matId }: { matId: string }) {
+  const state = useMatState(matId);
+  const scoreboard = state?.scoreboard;
+  if (!state || !scoreboard) return null;
+
+  const row = (side: "red" | "blue") => {
+    const corner = scoreboard[side];
+    return (
+      <div className="flex items-center gap-2 px-2 py-1">
+        <span className={`h-4 w-1 shrink-0 rounded-full ${side === "red" ? "bg-[#dc2626]" : "bg-[#2563eb]"}`} />
+        <span className="min-w-0 flex-1 truncate font-semibold uppercase">{corner.name}</span>
+        {scoreboard.labels.advantagesShort && (
+          <span className="text-yellow-300 tabular-nums">
+            {scoreboard.labels.advantagesShort}
+            {corner.advantages}
+          </span>
+        )}
+        <span className="text-white/70 tabular-nums">
+          {scoreboard.labels.penaltiesShort}
+          {corner.penalties}
+        </span>
+        <span className="w-6 text-right font-display text-base font-bold leading-none tabular-nums">{corner.points}</span>
+      </div>
+    );
+  };
+
+  return (
+    <div
+      // Repete o cartão do placar que está ao lado do vídeo: o leitor de ecrã não o lê duas vezes.
+      aria-hidden="true"
+      className="pointer-events-none absolute top-2 left-2 w-60 max-w-[calc(100%-1rem)] overflow-hidden rounded-md bg-black/80 text-[11px] text-white shadow-lg sm:top-3 sm:left-3 sm:w-72 sm:text-xs"
+    >
+      {row("red")}
+      <div className="border-t border-white/15" />
+      {row("blue")}
+      <div className="flex items-center justify-between gap-2 border-t border-white/15 bg-white/10 px-2 py-0.5 text-white/70">
+        <span className="truncate">{scoreboard.divisionName}</span>
+        <LiveClock clock={scoreboard.clock} serverNow={scoreboard.serverNow} className="font-semibold text-white" />
       </div>
     </div>
   );

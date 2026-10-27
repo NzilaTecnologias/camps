@@ -5,6 +5,7 @@ import { UserError } from "@/lib/errors";
 import { isPlatformAdmin } from "../billing-config";
 import { checkProductionEnv } from "../env-check";
 import { refreshPlanPayment } from "../federation-plan";
+import { publishedNow } from "../manage";
 import { refreshMembershipPayment } from "../memberships";
 import { refreshPayment } from "../registrations";
 import { audit, staffRoleFor, type Staff } from "./session";
@@ -223,9 +224,9 @@ export async function moderateEvent(staff: Staff, eventId: string, status: strin
   if (status !== "DRAFT" && status !== "CANCELLED" && status !== "PUBLISHED") throw new UserError("Estado inválido");
   const reason = rawReason.trim();
   if (status !== "PUBLISHED" && (reason.length < 5 || reason.length > 300)) throw new UserError("Indique o motivo");
-  const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true, slug: true, status: true } });
+  const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true, slug: true, status: true, publishedAt: true } });
   if (!event) throw new UserError("Evento não encontrado");
-  await prisma.event.update({ where: { id: event.id }, data: { status } });
+  await prisma.event.update({ where: { id: event.id }, data: { status, ...publishedNow(event, status) } });
   await audit(staff, `event.status.${status.toLowerCase()}`, { type: "event", id: event.id }, { from: event.status, reason });
   return event;
 }

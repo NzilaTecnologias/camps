@@ -281,7 +281,7 @@ export async function getScoreboardControl(userId: string, matchId: string) {
                   status: true,
                   organizerId: true,
                   sport: true,
-                  mats: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } },
+                  mats: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true, isLive: true } },
                 },
               },
             },

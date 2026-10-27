@@ -25,6 +25,8 @@ function parseDay(value: string, time: string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+const SORTS = ["recent", "date", "popular"] as const;
+
 /** Lê os filtros do endereço, ignorando valores que não reconhece. */
 function readFilters(params: Awaited<SearchParams>) {
   const raw = {
@@ -34,7 +36,8 @@ function readFilters(params: Awaited<SearchParams>) {
     city: one(params.city),
     from: one(params.from),
     to: one(params.to),
-    sort: one(params.sort) === "popular" ? ("popular" as const) : ("date" as const),
+    // Por omissão, os publicados há menos tempo primeiro.
+    sort: SORTS.find((value) => value === one(params.sort)) ?? ("recent" as const),
     view: one(params.view) === "map" ? ("map" as const) : ("grid" as const),
   };
   const filters: EventFilters = {
@@ -87,7 +90,7 @@ async function EventsBrowser({ searchParams }: { searchParams: SearchParams }) {
   // Parâmetros atuais para os links de página (os valores por omissão não aparecem no endereço).
   const pagerParams = Object.fromEntries(
     Object.entries(raw).filter(
-      ([key, value]) => value && !(key === "when" && value === "upcoming") && !(key === "sort" && value === "date") && !(key === "view" && value === "grid"),
+      ([key, value]) => value && !(key === "when" && value === "upcoming") && !(key === "sort" && value === "recent") && !(key === "view" && value === "grid"),
     ),
   );
   const clearHref = raw.when === "past" ? "/events?when=past" : "/events";
@@ -95,7 +98,7 @@ async function EventsBrowser({ searchParams }: { searchParams: SearchParams }) {
   const mapToggleHref = (() => {
     const query = new URLSearchParams(
       Object.entries({ ...raw, view: raw.view === "map" ? "" : "map" }).filter(
-        ([key, value]) => value && !(key === "when" && value === "upcoming") && !(key === "sort" && value === "date"),
+        ([key, value]) => value && !(key === "when" && value === "upcoming") && !(key === "sort" && value === "recent"),
       ),
     ).toString();
     return query ? `/events?${query}` : "/events";
@@ -194,7 +197,8 @@ async function EventsBrowser({ searchParams }: { searchParams: SearchParams }) {
             <label className="sm:col-span-2 lg:col-span-2">
               <span className="sr-only">Ordenar</span>
               <select name="sort" defaultValue={raw.sort} className={controlClass}>
-                <option value="date">{raw.when === "past" ? "Mais recentes primeiro" : "Mais próximos primeiro"}</option>
+                <option value="recent">Publicados recentemente</option>
+                <option value="date">{raw.when === "past" ? "Realizados recentemente" : "Mais próximos primeiro"}</option>
                 <option value="popular">Mais inscritos primeiro</option>
               </select>
             </label>
