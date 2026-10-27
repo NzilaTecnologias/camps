@@ -16,6 +16,8 @@ npm run dev          # http://localhost:3000
 
 `npm run db:up` imprime a URL de conexão. Se a porta for diferente da que está em `.env`, atualize `DATABASE_URL`.
 
+Antes de arrancar, `npm run dev` apaga a cache de desenvolvimento do Next.js (`.next/dev`) se as dependências mudaram desde a última vez (`scripts/dev-cache-guard.mjs`). Uma cache de antes de uma atualização pode pôr a página a recarregar sem parar ("HMR hash mismatch" na consola). Se isso voltar a acontecer por outro motivo: parar o servidor, apagar `.next/dev` e correr `npm run dev`. Em produção não há esta cache nem recargas automáticas.
+
 O seed cria a conta `organizador@camps.local` com a palavra-passe `camps-demo`, só para desenvolvimento local. O painel do organizador fica em `/manage`. Cria também a equipa de demonstração da administração (`/admin/login`): `admin@camps.local` / `camps-admin` (administrador), `financeiro@camps.local` / `camps-financeiro` e `suporte@camps.local` / `camps-suporte`.
 
 ## Área do organizador

@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/dev-cache-guard.mjs",
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/start.mjs",
     "lint": "eslint",
     "test": "vitest run",
     "test:e2e": "node scripts/e2e.mjs && node scripts/e2e-extra.mjs && node scripts/e2e-auth.mjs && node scripts/e2e-features.mjs && node scripts/e2e-admin.mjs && node scripts/e2e-teams-schedule.mjs",
