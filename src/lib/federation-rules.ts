@@ -10,7 +10,7 @@ export const PLAN_FEATURES: Record<FederationPlanName, string[]> = {
     "Página própria da federação (/f/…)",
     "Eventos dos organizadores associados",
     "Filiação de academias com validade",
-    "Repasses das quotas para o IBAN da federação",
+    "Quotas pagas direto na conta da federação, sem taxa",
   ],
   PREMIUM: [
     "Tudo o do plano Básico",

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { slugify } from "@/lib/slug";
 import { createBracket, reportResult } from "@/server/brackets";
+import { grantWelcomeCredits, settleDueCredits } from "@/server/credits";
 import { adjustScore, openScoreboard } from "@/server/scoreboard";
 import { refreshCommunityStats } from "@/server/stats";
 
@@ -18,12 +19,14 @@ async function main() {
   await prisma.refund.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.registration.deleteMany();
-  await prisma.payout.deleteMany();
   // Apaga também membros, organizações, academias, planos, filiações e notícias (em cascata).
   await prisma.federation.deleteMany();
   await prisma.event.deleteMany();
   await prisma.athleteProfile.deleteMany();
   await prisma.academy.deleteMany();
+  await prisma.creditTransaction.deleteMany();
+  await prisma.creditPurchase.deleteMany();
+  await prisma.paymentAccount.deleteMany();
   await prisma.organizerMember.deleteMany();
   await prisma.organizer.deleteMany();
   await prisma.emailOutbox.deleteMany();
@@ -203,8 +206,6 @@ async function main() {
       color: "#0f766e",
       plan: "PREMIUM",
       planExpiresAt: new Date(now + 365 * DAY),
-      payoutHolder: "Federação Demo de Jiu-Jitsu",
-      payoutIban: "AO15004000001234567810174",
       members: { create: { userId: owner.id } },
       organizers: { create: { organizerId: organizer.id } },
       academies: { create: academies.slice(0, 3).map((academy) => ({ academyId: academy.id, validUntil: new Date(now + 300 * DAY) })) },
@@ -297,6 +298,19 @@ async function main() {
         },
       },
     });
+  }
+
+  // Créditos: as boas-vindas de cada organização (bloqueadas até à primeira compra) e um acerto
+  // de demonstração, já gasto nos atletas confirmados (sem ele, a gestão dos eventos ficava bloqueada).
+  for (const { id } of await prisma.organizer.findMany({ select: { id: true } })) {
+    await prisma.$transaction(async (tx) => {
+      await grantWelcomeCredits(tx, id);
+      const { credits } = await tx.organizer.update({ where: { id }, data: { credits: { increment: 500 } }, select: { credits: true } });
+      await tx.creditTransaction.create({
+        data: { organizerId: id, kind: "ADJUSTMENT", delta: 500, balance: credits, note: "Saldo de demonstração", createdBy: "seed" },
+      });
+    });
+    await settleDueCredits(id);
   }
 
   // E uma semifinal a meio no placar da Área 1, para os ecrãs de placar terem o que mostrar.

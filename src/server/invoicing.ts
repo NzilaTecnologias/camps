@@ -9,7 +9,7 @@ import { rolesWith } from "@/lib/organizer-permissions";
 import { deliverEmail, enqueueEmail } from "./email";
 import { appUrl } from "./payments";
 
-// Faturas da Camps aos organizadores (taxa por atleta) e às federações (Plano Federação).
+// Faturas da Camps aos organizadores (compras de créditos) e às federações (Plano Federação).
 //
 // Em Angola, as faturas têm de sair de um programa de faturação certificado pela AGT. Até haver
 // um ligado, a Camps emite aqui documentos internos com numeração sequencial (sem falhas, por
@@ -55,13 +55,13 @@ async function nextNumber(tx: Tx, series: string): Promise<number> {
 type Customer = { name: string; nif: string | null; address: string | null; email: string };
 
 type Draft = {
-  kind: "PLATFORM_FEE" | "FEDERATION_PLAN";
+  kind: "CREDITS" | "FEDERATION_PLAN";
   customer: Customer;
   organizerId?: string;
   eventId?: string;
   federationId?: string;
   lines: InvoiceLine[];
-  /** Como foi paga, para o e-mail e a página (ex.: "Descontada no repasse do evento"). */
+  /** Como foi paga, para o e-mail e a página (ex.: "Pago por Multicaixa Express"). */
   paidVia: string;
 };
 
@@ -166,38 +166,18 @@ async function federationCustomer(tx: Tx, federationId: string): Promise<Custome
   return { name: federation.billingName ?? federation.name, nif: federation.billingNif, address: federation.billingAddress, email };
 }
 
-/**
- * Fatura a taxa dos atletas confirmados de um evento que ainda não foram faturados. Corre a cada
- * repasse (e a pedido do administrador), por isso um evento pode ter várias faturas, cada uma com
- * os atletas confirmados desde a anterior. Devolve null se não houver nada por faturar.
- */
-export async function invoiceEventFee(eventId: string): Promise<string | null> {
-  const issued = await prisma.$transaction(async (tx) => {
-    const event = await tx.event.findUniqueOrThrow({
-      where: { id: eventId },
-      select: { id: true, name: true, organizerId: true, platformFeeCents: true },
-    });
-    if (event.platformFeeCents <= 0) return null;
-    // Trancar as faturas deste evento: dois repasses ao mesmo tempo não faturam os mesmos atletas.
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`invoice-fee:${event.id}`}))`;
-    const [{ athletes }] = await tx.$queryRaw<{ athletes: bigint }[]>`
-      SELECT COUNT(DISTINCT "athleteId") AS athletes FROM "Registration"
-       WHERE "eventId" = ${event.id} AND "confirmedAt" IS NOT NULL`;
-    const previous = await tx.invoice.findMany({ where: { eventId: event.id, kind: "PLATFORM_FEE" }, select: { lines: true } });
-    const invoiced = previous.flatMap((invoice) => invoice.lines as InvoiceLine[]).reduce((sum, item) => sum + item.quantity, 0);
-    const pending = Number(athletes) - invoiced;
-    if (pending <= 0) return null;
-    return issueInvoice(tx, {
-      kind: "PLATFORM_FEE",
-      customer: await organizerCustomer(tx, event.organizerId),
-      organizerId: event.organizerId,
-      eventId: event.id,
-      lines: [line(`Taxa de serviço Camps — ${event.name} (atletas confirmados)`, pending, event.platformFeeCents)],
-      paidVia: "Descontada do saldo das inscrições no repasse do evento",
-    });
+/** Fatura de uma compra de créditos, dentro da transação que os soma ao saldo. */
+export async function invoiceCredits(
+  tx: Tx,
+  input: { organizerId: string; credits: number; unitCents: number; paidVia: string },
+) {
+  return issueInvoice(tx, {
+    kind: "CREDITS",
+    customer: await organizerCustomer(tx, input.organizerId),
+    organizerId: input.organizerId,
+    lines: [line("Créditos Camps (1 crédito = 1 atleta confirmado num evento)", input.credits, input.unitCents)],
+    paidVia: input.paidVia,
   });
-  await afterIssue(issued);
-  return issued?.invoiceId ?? null;
 }
 
 /** Fatura de um ano (ou `months`) do Plano Federação, dentro da transação que o ativa. */
@@ -235,8 +215,8 @@ export async function getInvoiceFor(user: { id: string; email: string }, invoice
   return null;
 }
 
-export function listEventInvoices(eventId: string) {
-  return prisma.invoice.findMany({ where: { eventId }, orderBy: { issuedAt: "desc" } });
+export function listOrganizerInvoices(organizerId: string) {
+  return prisma.invoice.findMany({ where: { organizerId }, orderBy: { issuedAt: "desc" }, take: 100 });
 }
 
 export function listFederationInvoices(federationId: string) {

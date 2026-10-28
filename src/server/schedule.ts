@@ -5,6 +5,7 @@ import { UserError } from "@/lib/errors";
 import { parseDateTimeInput } from "@/lib/format";
 import { balanceDivisions, buildSchedule } from "@/lib/schedule";
 import { TAG } from "./cache-tags";
+import { requireCredits } from "./credits";
 import { memberOf } from "./manage";
 
 // Programação das lutas de um evento (regras em lib/schedule.ts). O organizador escolhe a área de
@@ -100,6 +101,7 @@ export async function updateScheduleSettings(userId: string, eventId: string, mi
 /** Área de cada categoria (campos `mat-<categoria>`; vazio = sem área). */
 export async function assignDivisionMats(userId: string, eventId: string, choices: Map<string, string>) {
   const event = await requireManagedEvent(userId, eventId);
+  await requireCredits(event.id);
   const [mats, divisions] = await Promise.all([
     prisma.mat.findMany({ where: { eventId: event.id }, select: { id: true } }),
     prisma.division.findMany({ where: { eventId: event.id }, select: { id: true } }),

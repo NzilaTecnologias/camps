@@ -9,6 +9,7 @@ import { parseLatLng } from "@/lib/geo";
 import { MAX_IMAGE_BYTES, sniffImageType } from "@/lib/image-file";
 import { SPORT_NAMES } from "@/lib/sports";
 import { MIN_COMPETITORS, createBracket, parseBracketKind } from "./brackets";
+import { requireCredits } from "./credits";
 import { normalizeImage } from "./images";
 import { memberOf } from "./manage";
 import { storage } from "./storage";
@@ -395,6 +396,7 @@ export async function generateMissingBrackets(userId: string, eventId: string, r
     },
   });
   const ready = divisions.filter((division) => division._count.registrations >= MIN_COMPETITORS[type]);
+  if (ready.length > 0) await requireCredits(eventId);
   for (const division of ready) await createBracket(division.id, type);
   return { generated: ready.length, skipped: divisions.length - ready.length };
 }

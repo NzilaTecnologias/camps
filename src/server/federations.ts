@@ -7,7 +7,6 @@ import { normalizeColor, planActive, premiumActive, RANKING_POINTS, type Federat
 import { UTC_OFFSET } from "@/lib/format";
 import { slugify } from "@/lib/slug";
 import { SPORT_NAMES } from "@/lib/sports";
-import { computeStatement, normalizeAngolanIban } from "@/lib/statement";
 import { can } from "@/lib/admin-permissions";
 import { audit, type Staff } from "./admin/session";
 import { federationPlanPriceCents } from "./billing-config";
@@ -218,36 +217,18 @@ export async function deletePost(userId: string, federationId: string, postId: s
   return federation.slug;
 }
 
-export async function updateFederationPayoutDetails(userId: string, federationId: string, holder: string, iban: string) {
-  const federation = await requireFederation(userId, federationId);
-  const name = holder.trim();
-  if (name.length < 3 || name.length > 120) throw new UserError("Indique o titular da conta");
-  const normalized = normalizeAngolanIban(iban);
-  if (!normalized) throw new UserError("IBAN inválido. Um IBAN angolano tem AO seguido de 23 dígitos.");
-  await prisma.federation.update({ where: { id: federation.id }, data: { payoutHolder: name, payoutIban: normalized } });
-}
-
 /**
- * Extrato das quotas de filiação: a Camps não cobra taxa sobre elas (recebe a assinatura do plano).
- * Quotas reembolsadas saem do saldo; se já tinham sido transferidas, a federação fica a dever.
+ * Quotas de filiação cobradas: caem direto na conta de pagamentos da federação e a Camps não fica
+ * com nada delas (recebe a assinatura do plano). As reembolsadas saem do total.
  */
-export async function getFederationStatement(federationId: string) {
-  const [collected, refunded, paidOut, payouts] = await Promise.all([
+export async function getFederationQuotas(federationId: string) {
+  const [collected, refunded] = await Promise.all([
     prisma.membershipPayment.aggregate({ where: { status: { in: ["SUCCEEDED", "REFUNDED"] }, membership: { federationId } }, _sum: { amountCents: true } }),
     prisma.membershipPayment.aggregate({ where: { status: "REFUNDED", membership: { federationId } }, _sum: { amountCents: true } }),
-    prisma.payout.aggregate({ where: { federationId }, _sum: { amountCents: true } }),
-    prisma.payout.findMany({ where: { federationId }, orderBy: { paidAt: "desc" } }),
   ]);
-  return {
-    statement: computeStatement({
-      collectedCents: collected._sum.amountCents ?? 0,
-      refundedCents: refunded._sum.amountCents ?? 0,
-      athletes: 0,
-      feePerAthleteCents: 0,
-      paidOutCents: paidOut._sum.amountCents ?? 0,
-    }),
-    payouts,
-  };
+  const collectedCents = collected._sum.amountCents ?? 0;
+  const refundedCents = refunded._sum.amountCents ?? 0;
+  return { collectedCents, refundedCents, netCents: collectedCents - refundedCents };
 }
 
 /** Federações (com plano ativo) onde a organização pode pôr os seus eventos. */
@@ -273,10 +254,11 @@ export async function listFederationsAdmin(staff: Staff) {
     include: {
       members: { include: { user: { select: { name: true, email: true } } }, take: 3 },
       _count: { select: { events: true, memberships: { where: { status: "ACTIVE" } } } },
+      paymentAccount: { select: { proxypayPosId: true, paypalClientId: true } },
     },
   });
   return Promise.all(
-    federations.map(async (federation) => ({ ...federation, ...(await getFederationStatement(federation.id)) })),
+    federations.map(async (federation) => ({ ...federation, quotas: await getFederationQuotas(federation.id) })),
   );
 }
 
@@ -322,21 +304,6 @@ export async function activateFederationPlan(
 export async function updateFederationBilling(userId: string, federationId: string, input: BillingDetailsInput) {
   const federation = await requireFederation(userId, federationId);
   await prisma.federation.update({ where: { id: federation.id }, data: billingDetails(input) });
-}
-
-export async function recordFederationPayout(staff: Staff, federationId: string, amount: string, reference: string) {
-  requireFinance(staff);
-  const federation = await prisma.federation.findUnique({ where: { id: federationId } });
-  if (!federation) throw new UserError("Federação não encontrada");
-  const { statement } = await getFederationStatement(federationId);
-  const amountCents = Math.round(Number(amount.replace(/\s/g, "").replace(",", ".")) * 100);
-  if (!(amountCents > 0)) throw new UserError("Indique o valor transferido");
-  if (amountCents > statement.balanceCents) throw new UserError("O valor passa do saldo a transferir a esta federação");
-  const ref = reference.trim();
-  if (ref.length < 3 || ref.length > 80) throw new UserError("Indique a referência da transferência");
-  if (!federation.payoutIban) throw new UserError("A federação ainda não indicou o IBAN");
-  await prisma.payout.create({ data: { federationId, amountCents, reference: ref, recordedBy: staff.email } });
-  await audit(staff, "payout.record", { type: "federation", id: federationId }, { amountCents, reference: ref });
 }
 
 // ---------- Leituras públicas ----------

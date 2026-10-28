@@ -6,12 +6,12 @@ import { normalizeAngolanMobile } from "@/lib/phone";
 import { deliverEmail } from "./email";
 import { kv } from "./kv";
 import { membershipActiveEmail, membershipRefundedEmail } from "./notifications";
-import { appUrl, availableProviders, getProvider, providerFor } from "./payments";
+import { accountPayee, appUrl, getProvider, payeeOf, paymentMethods, providerFor, simulatorEnabled, type Payee } from "./payments";
 import type { Outcome } from "./payments/types";
 
 // Filiação individual de atletas numa federação (plano Premium). O pagamento segue as mesmas regras
 // das inscrições: o estado vem sempre do provedor, nunca do navegador nem do callback.
-// A Camps não fica com nenhuma parte das quotas: vão inteiras para a federação (repasses).
+// A Camps não fica com nenhuma parte das quotas: são cobradas na conta de pagamentos da própria federação.
 
 /** Filiação ativa de um atleta numa federação, válida numa data (ex.: o dia do evento). */
 export function activeMembership(athleteId: string, federationId: string, at: Date) {
@@ -39,7 +39,8 @@ export async function getJoinContext(userId: string | null, slug: string) {
         },
       })
     : [];
-  return { federation, athletes, providers: availableProviders().map(({ id, label }) => ({ id, label })) };
+  const providers = paymentMethods(accountPayee(await federationAccount(federation.id))).map(({ id, label }) => ({ id, label }));
+  return { federation, athletes, providers };
 }
 
 export type MembershipInput = {
@@ -91,7 +92,7 @@ export async function startMembership(userId: string, slug: string, input: Membe
     return { membershipId: membership.id };
   }
 
-  const { provider, mobile } = requireProvider(input.provider, input.mobile);
+  const { provider, mobile } = requireProvider(accountPayee(await federationAccount(context.federation.id)), input.provider, input.mobile);
   const membership = await prisma.membership.create({
     data: { federationId: context.federation.id, planId: plan.id, athleteId: athlete.id, boughtById: userId, priceCents: plan.priceCents },
   });
@@ -121,9 +122,14 @@ async function createAthlete(userId: string, input: MembershipInput) {
   });
 }
 
-function requireProvider(providerId: string, mobileInput: string) {
-  const provider = getProvider(providerId);
-  if (!provider) throw new UserError("Escolha um método de pagamento");
+/** As quotas caem na conta de pagamentos da federação. */
+const federationAccount = (federationId: string) => prisma.paymentAccount.findUnique({ where: { federationId } });
+
+const NO_PAYMENTS = "A federação ainda não ligou uma conta para receber as quotas";
+
+function requireProvider(payee: Payee, providerId: string, mobileInput: string) {
+  const provider = getProvider(payee, providerId);
+  if (!provider) throw new UserError(paymentMethods(payee).length === 0 ? NO_PAYMENTS : "Escolha um método de pagamento");
   const mobile = provider.id === "MULTICAIXA_EXPRESS" ? normalizeAngolanMobile(mobileInput) : null;
   if (provider.id === "MULTICAIXA_EXPRESS" && !mobile) {
     throw new UserError("Informe um número de telemóvel angolano válido (9 dígitos, a começar por 9)");
@@ -138,7 +144,6 @@ export async function startMembershipPayment(
   providerId: string,
   mobileInput: string,
 ): Promise<MembershipStarted> {
-  const { provider, mobile } = requireProvider(providerId, mobileInput);
   const pending = await prisma.membershipPayment.findMany({
     where: { membershipId, status: "PENDING", membership: { boughtById: userId } },
   });
@@ -150,6 +155,8 @@ export async function startMembershipPayment(
   });
   if (!membership) throw new UserError("Filiação não encontrada");
   if (membership.status !== "PENDING") return { membershipId };
+  const account = await federationAccount(membership.federationId);
+  const { provider, mobile } = requireProvider(accountPayee(account), providerId, mobileInput);
   if (membership.payments.some((payment) => payment.provider === "MULTICAIXA_EXPRESS")) {
     throw new UserError("Já existe um pedido à espera de confirmação na app Multicaixa Express. Confirme-o ou aguarde que expire.");
   }
@@ -159,7 +166,14 @@ export async function startMembershipPayment(
   });
 
   const payment = await prisma.membershipPayment.create({
-    data: { membershipId, provider: provider.id, amountCents: membership.priceCents, chargeCurrency: "AOA", chargeAmountCents: membership.priceCents },
+    data: {
+      membershipId,
+      provider: provider.id,
+      amountCents: membership.priceCents,
+      chargeCurrency: "AOA",
+      chargeAmountCents: membership.priceCents,
+      accountId: provider.id === "SIMULATOR" ? null : (account?.id ?? null),
+    },
   });
   try {
     const started = await provider.start({
@@ -213,7 +227,7 @@ export async function refreshMembershipPayment(paymentId: string, options: { for
   const checks = await (await kv()).incr(`paycheck:${payment.id}`, 3_000);
   if (checks > 1 && !options.force) return;
   try {
-    await settleMembershipPayment(payment.id, await providerFor(payment.provider).check(payment.providerRef));
+    await settleMembershipPayment(payment.id, await providerFor(payment.provider, await payeeOf(payment.accountId)).check(payment.providerRef));
   } catch (error) {
     console.error(`Não foi possível consultar o pagamento de filiação ${payment.id}`, error);
   }
@@ -243,7 +257,7 @@ export async function expireStaleMembershipPayment(paymentId: string) {
 }
 
 export async function simulateMembershipPayment(userId: string, paymentId: string, approve: boolean) {
-  if (!getProvider("SIMULATOR")) throw new UserError("O simulador de pagamentos está desligado");
+  if (!simulatorEnabled()) throw new UserError("O simulador de pagamentos está desligado");
   const payment = await prisma.membershipPayment.findFirst({
     where: { id: paymentId, provider: "SIMULATOR", membership: { boughtById: userId } },
   });
@@ -265,7 +279,8 @@ export async function getMyMembership(userId: string, membershipId: string) {
     },
   });
   if (!membership) return null;
-  return { membership, providers: availableProviders().map(({ id, label }) => ({ id, label })) };
+  const providers = paymentMethods(accountPayee(await federationAccount(membership.federationId))).map(({ id, label }) => ({ id, label }));
+  return { membership, providers };
 }
 
 export function listMyMemberships(userId: string) {
@@ -331,7 +346,7 @@ export async function requestMembershipRefund(userId: string, paymentId: string,
     return slug;
   }
   try {
-    const started = await providerFor(payment.provider).refund({ refundId: refund.id, providerRef: payment.providerRef!, appUrl: appUrl() });
+    const started = await providerFor(payment.provider, await payeeOf(payment.accountId)).refund({ refundId: refund.id, providerRef: payment.providerRef!, appUrl: appUrl() });
     await prisma.membershipRefund.update({ where: { id: refund.id }, data: { providerRef: started.refundRef } });
     await settleMembershipRefund(refund.id, started.outcome);
     return slug;
@@ -346,7 +361,7 @@ export async function refreshMembershipRefund(refundId: string) {
   const refund = await prisma.membershipRefund.findUnique({ where: { id: refundId }, include: { payment: true } });
   if (!refund || refund.status !== "PENDING" || refund.manual || !refund.providerRef) return;
   try {
-    await settleMembershipRefund(refund.id, await providerFor(refund.payment.provider).checkRefund(refund.providerRef));
+    await settleMembershipRefund(refund.id, await providerFor(refund.payment.provider, await payeeOf(refund.payment.accountId)).checkRefund(refund.providerRef));
   } catch (error) {
     console.error(`Não foi possível consultar o reembolso de quota ${refund.id}`, error);
   }

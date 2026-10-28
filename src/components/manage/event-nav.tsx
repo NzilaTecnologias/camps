@@ -27,7 +27,7 @@ export const EVENT_SECTIONS: { title: string; items: EventItem[] }[] = [
       { segment: "registrations", label: "Inscrições", icon: "users", permission: "view" },
       { segment: "discounts", label: "Descontos e cupões", icon: "ticket", permission: "event" },
       { segment: "payments", label: "Pagamentos e reembolsos", icon: "wallet", permission: "money" },
-      { segment: "billing", label: "Faturação e repasses", icon: "flag", permission: "money" },
+      { segment: "credits", label: "Créditos", icon: "flag", permission: "money" },
     ],
   },
   {

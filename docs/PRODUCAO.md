@@ -56,7 +56,9 @@ Preencha pelo menos:
 - `DOMAIN`, `ACME_EMAIL` e `APP_URL` (com `https://`);
 - `POSTGRES_PASSWORD` (gerar com `openssl rand -base64 32`);
 - `RESEND_API_KEY` e `EMAIL_FROM`;
-- `PROXYPAY_TOKEN` e `PROXYPAY_POS_ID`, e/ou as credenciais do PayPal com `PAYPAL_EXCHANGE_RATE`;
+- `PAYMENT_SECRETS_KEY` (gerar com `openssl rand -base64 32`), que cifra as contas de pagamentos das organizações e federações. Guarde uma cópia segura: sem ela, as contas ligadas deixam de funcionar e têm de ser ligadas de novo;
+- `PROXYPAY_TOKEN` e `PROXYPAY_POS_ID`, e/ou as credenciais do PayPal com `PAYPAL_EXCHANGE_RATE`. São as contas da Camps, que recebem as compras de créditos e o Plano Federação; as inscrições caem na conta que cada organização liga no painel;
+- `CREDIT_PRICE_KZ`, o preço avulso de um crédito (por omissão 1000 Kz);
 - `PLATFORM_ADMIN_EMAILS`, com o e-mail de quem vai administrar a plataforma (o resto da equipa recebe o papel na própria administração);
 - `NEXT_PUBLIC_MAP_TILE_URL` e `NEXT_PUBLIC_MAP_ATTRIBUTION`;
 - `SENTRY_DSN`.
@@ -199,7 +201,8 @@ O `Dockerfile` também serve em plataformas como Railway, Render ou Fly.io:
 - [ ] `docker compose logs app` não mostra erros de configuração; os avisos foram lidos
 - [ ] Criar conta → chega o e-mail de confirmação (e não vai para o spam)
 - [ ] "Esqueceu-se da palavra-passe?" → chega o e-mail e o link funciona
-- [ ] Inscrição paga com Multicaixa Express real, de valor baixo → confirmada e recibo por e-mail
+- [ ] Compra de créditos com Multicaixa Express real, de valor baixo → créditos somados e fatura por e-mail
+- [ ] Organização de teste liga a sua conta ProxyPay (com o callback `https://<domínio>/api/payments/multicaixa-express/callback` configurado na ProxyPay dela) → inscrição paga com Multicaixa Express real, de valor baixo → confirmada, recibo por e-mail e 1 crédito gasto
 - [ ] Reembolso dessa inscrição → dinheiro devolvido e e-mail de reembolso
 - [ ] Mapa de eventos com os mosaicos do fornecedor contratado
 - [ ] Um erro de teste chega ao Sentry

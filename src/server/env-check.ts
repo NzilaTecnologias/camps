@@ -30,8 +30,14 @@ export function checkProductionEnv(env: Record<string, string | undefined> = pro
   }
   if (has("CRON_SECRET") && (env.CRON_SECRET ?? "").length < 32) errors.push("CRON_SECRET tem de ter pelo menos 32 caracteres");
 
+  const secretsKey = Buffer.from(env.PAYMENT_SECRETS_KEY?.trim() ?? "", "base64");
+  if (secretsKey.length !== 32) {
+    errors.push("PAYMENT_SECRETS_KEY em falta ou inválida (32 bytes em base64): cifra as contas de pagamentos das organizações");
+  }
+
+  // As contas do .env são as da Camps: recebem as compras de créditos e o Plano Federação.
   const payments = (has("PROXYPAY_TOKEN") && has("PROXYPAY_POS_ID")) || (has("PAYPAL_CLIENT_ID") && has("PAYPAL_CLIENT_SECRET"));
-  if (!payments) warnings.push("Nenhum método de pagamento configurado (ProxyPay ou PayPal): só funcionam eventos gratuitos");
+  if (!payments) warnings.push("A Camps não tem método de pagamento configurado (ProxyPay ou PayPal): ninguém consegue comprar créditos");
   if (has("PROXYPAY_API_URL") && env.PROXYPAY_API_URL?.includes("sandbox")) warnings.push("PROXYPAY_API_URL aponta para o sandbox");
   if (has("PAYPAL_API_URL") && env.PAYPAL_API_URL?.includes("sandbox")) warnings.push("PAYPAL_API_URL aponta para o sandbox");
   if (has("PAYPAL_CLIENT_ID") && !(Number(env.PAYPAL_EXCHANGE_RATE) > 0)) errors.push("PAYPAL_EXCHANGE_RATE em falta ou inválida");

@@ -5,8 +5,8 @@ import { rolesWith, type OrganizerPermission } from "@/lib/organizer-permissions
 import { slugify } from "@/lib/slug";
 import { SPORT_NAMES } from "@/lib/sports";
 import { parseLatLng } from "@/lib/geo";
-import { platformFeePerAthleteCents } from "./billing-config";
 import { createBracket, parseBracketKind, reportResult } from "./brackets";
+import { chargeAthlete, grantWelcomeCredits, requireCredits } from "./credits";
 import { divisionDetails } from "./events";
 
 // Toda função daqui recebe o usuário logado e só enxerga o que pertence a um organizador dele,
@@ -55,8 +55,12 @@ export function listOrganizers(userId: string) {
 export async function createOrganizer(userId: string, name: string) {
   required(name, "o nome da organização");
   const slug = await uniqueSlug(name, async (s) => (await prisma.organizer.count({ where: { slug: s } })) > 0);
-  return prisma.organizer.create({
-    data: { name, slug, members: { create: { userId, role: "OWNER" } } },
+  return prisma.$transaction(async (tx) => {
+    const organizer = await tx.organizer.create({
+      data: { name, slug, members: { create: { userId, role: "OWNER" } } },
+    });
+    await grantWelcomeCredits(tx, organizer.id);
+    return organizer;
   });
 }
 
@@ -92,8 +96,6 @@ export async function createEvent(userId: string, input: EventInput) {
   return prisma.event.create({
     data: {
       organizerId: input.organizerId,
-      // A taxa em vigor fica gravada no evento: mudar o preço não mexe em eventos já criados.
-      platformFeeCents: platformFeePerAthleteCents(),
       slug,
       name: input.name,
       description: input.description || null,
@@ -252,12 +254,15 @@ export async function addAthlete(userId: string, divisionId: string, input: Athl
         priceCents: 0,
       },
     });
+    // Um atleta inscrito à mão também gasta crédito; sem saldo fica por cobrar.
+    await chargeAthlete(tx, division.eventId, athlete.id);
   });
   return division.eventId;
 }
 
 export async function generateBracket(userId: string, divisionId: string, type: string) {
   const division = await requireDivision(userId, divisionId);
+  await requireCredits(division.eventId);
   await createBracket(division.id, parseBracketKind(type));
   return division.eventId;
 }

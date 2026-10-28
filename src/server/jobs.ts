@@ -4,6 +4,7 @@ import { deliverPendingEmails } from "./email";
 import { kv } from "./kv";
 import { refreshRefund } from "./refunds";
 import { refreshCommunityStats } from "./stats";
+import { expireStaleCreditPurchase, refreshCreditPurchase } from "./credits";
 import { expireStalePlanPayment, refreshPlanPayment } from "./federation-plan";
 import { expireStaleMembershipPayment, refreshMembershipPayment, refreshMembershipRefund } from "./memberships";
 import { expireStalePayment, refreshPayment } from "./registrations";
@@ -88,6 +89,20 @@ export async function reconcilePending(now = new Date()) {
     }
   });
 
+  // Compras de créditos: mesmas regras.
+  const creditPurchases = await prisma.creditPurchase.findMany({
+    where: { status: "PENDING", providerRef: { not: null }, createdAt: { lt: new Date(now.getTime() - 15_000) } },
+    orderBy: { createdAt: "asc" },
+    take: BATCH,
+    select: { id: true, createdAt: true },
+  });
+  await eachLimited(creditPurchases, PROVIDER_CONCURRENCY, async (purchase) => {
+    await refreshCreditPurchase(purchase.id, { force: true });
+    if (now.getTime() - purchase.createdAt.getTime() > PAYMENT_GIVE_UP_MS && (await expireStaleCreditPurchase(purchase.id))) {
+      expired++;
+    }
+  });
+
   const refunds = await prisma.refund.findMany({
     where: { status: "PENDING", manual: false, providerRef: { not: null } },
     orderBy: { createdAt: "asc" },
@@ -103,7 +118,7 @@ export async function reconcilePending(now = new Date()) {
     select: { id: true },
   });
   await eachLimited(membershipRefunds, PROVIDER_CONCURRENCY, (refund) => refreshMembershipRefund(refund.id));
-  return { payments: payments.length + membershipPayments.length + planPayments.length, refunds: refunds.length + membershipRefunds.length, expired };
+  return { payments: payments.length + membershipPayments.length + planPayments.length + creditPurchases.length, refunds: refunds.length + membershipRefunds.length, expired };
 }
 
 /** Corre todo o trabalho de fundo, se nenhum outro servidor o estiver a fazer agora. */

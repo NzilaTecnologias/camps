@@ -17,9 +17,9 @@ import {
 } from "@/server/admin/data";
 import { adminLogIn, adminLogOut, audit, getStaff, requireStaff } from "@/server/admin/session";
 import { resendVerificationEmail } from "@/server/auth";
-import { invoiceEventFeeNow, recordPayout } from "@/server/billing";
 import { publicDataChanged } from "@/server/cache-tags";
-import { activateFederationPlan, federationTag, recordFederationPayout } from "@/server/federations";
+import { adjustCredits } from "@/server/credits";
+import { activateFederationPlan, federationTag } from "@/server/federations";
 import { runJobs } from "@/server/jobs";
 import { clientIp, enforceLimit } from "@/server/limits";
 
@@ -99,18 +99,9 @@ export async function refreshPaymentAction(kind: string, paymentId: string) {
 
 // ---------- Finanças
 
-export async function recordPayoutAction(eventId: string, _state: ActionState, formData: FormData) {
+export async function adjustCreditsAction(organizerId: string, _state: ActionState, formData: FormData) {
   return runAction(async () => {
-    await recordPayout(await requireStaff("finance"), eventId, text(formData, "amount"), text(formData, "reference"));
-    refresh();
-  });
-}
-
-export async function invoiceEventFeeAction(eventId: string): Promise<ActionState> {
-  return runAction(async () => {
-    if (!(await invoiceEventFeeNow(await requireStaff("finance"), eventId))) {
-      throw new UserError("Não há atletas confirmados por faturar neste evento");
-    }
+    await adjustCredits(await requireStaff("finance"), organizerId, text(formData, "delta"), text(formData, "note"));
     refresh();
   });
 }
@@ -125,13 +116,6 @@ export async function activateFederationPlanAction(federationId: string, _state:
       formData.get("invoice") === "on",
     );
     updateTag(federationTag(slug));
-    refresh();
-  });
-}
-
-export async function recordFederationPayoutAction(federationId: string, _state: ActionState, formData: FormData) {
-  return runAction(async () => {
-    await recordFederationPayout(await requireStaff("finance"), federationId, text(formData, "amount"), text(formData, "reference"));
     refresh();
   });
 }

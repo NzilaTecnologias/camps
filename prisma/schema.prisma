@@ -277,17 +277,105 @@ model Organizer {
   id             String  @id @default(cuid())
   name           String
   slug           String  @unique
-  /// Conta para onde a Camps transfere o saldo das inscrições de cada evento.
-  payoutHolder   String?
-  payoutIban     String?
-  /// Dados para as faturas da taxa da Camps.
+  /// Créditos por gastar (1 crédito = 1 atleta confirmado num evento). Muda sempre na mesma
+  /// transação que grava o movimento em CreditTransaction (server/credits.ts).
+  credits        Int     @default(0)
+  /// Créditos de boas-vindas ainda bloqueados: passam para `credits` com a primeira compra.
+  welcomeCredits Int     @default(0)
+  /// Dados para as faturas das compras de créditos.
   billingName    String?
   billingNif     String?
   billingAddress String?
 
-  members     OrganizerMember[]
-  events      Event[]
-  federations FederationOrganizer[]
+  members        OrganizerMember[]
+  events         Event[]
+  federations    FederationOrganizer[]
+  paymentAccount PaymentAccount?
+  creditPurchases    CreditPurchase[]
+  creditTransactions CreditTransaction[]
+}
+
+/// Conta de pagamentos de uma organização ou de uma federação, como a ligação ao Stripe no
+/// Smoothcomp: o dinheiro das inscrições (ou das quotas) cai direto nela; a Camps não o guarda.
+/// Os segredos ficam encriptados (server/secrets.ts) e nunca voltam ao navegador.
+model PaymentAccount {
+  id                 String   @id @default(cuid())
+  organizerId        String?  @unique
+  federationId       String?  @unique
+  /// Multicaixa Express via ProxyPay: token da API (encriptado) e ponto de venda.
+  proxypayToken      String?
+  proxypayPosId      Int?
+  proxypaySandbox    Boolean  @default(false)
+  /// PayPal (Orders API): client id, segredo (encriptado), moeda e quantos kwanzas vale 1 unidade dela.
+  paypalClientId     String?
+  paypalSecret       String?
+  paypalSandbox      Boolean  @default(false)
+  paypalCurrency     String   @default("USD") @db.Char(3)
+  paypalExchangeRate Float?
+  updatedAt          DateTime @updatedAt
+
+  organizer          Organizer?          @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  federation         Federation?         @relation(fields: [federationId], references: [id], onDelete: Cascade)
+  payments           Payment[]
+  membershipPayments MembershipPayment[]
+}
+
+/// Compra de créditos à Camps, paga com as contas da própria Camps (.env).
+model CreditPurchase {
+  id                String          @id @default(cuid())
+  organizerId       String
+  credits           Int
+  /// Preço de cada crédito nesta compra (os pacotes maiores saem mais baratos).
+  unitCents         Int
+  amountCents       Int
+  paidById          String
+  provider          PaymentProvider
+  providerRef       String?
+  chargeCurrency    String          @db.Char(3)
+  chargeAmountCents Int
+  status            PaymentStatus   @default(PENDING)
+  failureReason     String?
+  createdAt         DateTime        @default(now())
+  settledAt         DateTime?
+
+  organizer Organizer @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerRef])
+  @@index([organizerId, status])
+  @@index([status, createdAt])
+}
+
+enum CreditKind {
+  /// Créditos oferecidos ao criar a organização.
+  WELCOME
+  PURCHASE
+  /// Um atleta confirmado num evento (cada atleta conta uma vez por evento).
+  ATHLETE
+  /// Acerto feito pela equipa da Camps, com o motivo em `note`.
+  ADJUSTMENT
+}
+
+/// Movimentos do saldo de créditos de uma organização. Um atleta só gasta um crédito por evento,
+/// seja em quantas categorias for (eventId + athleteId único).
+model CreditTransaction {
+  id          String     @id @default(cuid())
+  organizerId String
+  kind        CreditKind
+  /// Positivo entra no saldo, negativo sai.
+  delta       Int
+  /// Saldo logo a seguir a este movimento.
+  balance     Int
+  eventId     String?
+  athleteId   String?
+  purchaseId  String?    @unique
+  note        String?
+  createdBy   String?
+  createdAt   DateTime   @default(now())
+
+  organizer Organizer @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, athleteId])
+  @@index([organizerId, createdAt])
 }
 
 model OrganizerMember {
@@ -330,8 +418,6 @@ model Event {
   earlyDiscountEndsAt  DateTime?
   /// Inscrições pagas, pré-calculadas pela tarefa de fundo para ordenar por popularidade.
   paidRegistrations    Int         @default(0)
-  /// Taxa da Camps por atleta confirmado, fixada quando o evento é criado (ver server/billing.ts).
-  platformFeeCents     Int         @default(50000)
   /// Minutos que cada luta ocupa na programação: a luta mais a troca de atletas.
   matchMinutes         Int         @default(8)
   /// Imagem própria do evento, no armazenamento de ficheiros (server/storage.ts); nula = a
@@ -344,7 +430,6 @@ model Event {
   coupons            Coupon[]
   registrations      Registration[]
   mats               Mat[]
-  payouts            Payout[]
   /// Federação sob a qual o evento decorre (conta para o ranking dela e pode exigir filiação).
   federationId       String?
   /// Só atletas com filiação individual ativa nessa federação se podem inscrever (plano Premium).
@@ -456,32 +541,17 @@ model Payment {
   failureReason     String?
   createdAt         DateTime        @default(now())
   settledAt         DateTime?
+  /// Conta da organização onde o dinheiro caiu; é com as credenciais dela que se consulta e
+  /// devolve. Nulo = pago pelo simulador.
+  accountId         String?
 
-  registration Registration @relation(fields: [registrationId], references: [id])
+  registration Registration    @relation(fields: [registrationId], references: [id])
+  account      PaymentAccount? @relation(fields: [accountId], references: [id])
   refund       Refund?
 
   @@unique([provider, providerRef])
   @@index([registrationId])
   @@index([status, createdAt])
-}
-
-/// Transferência do saldo de um evento para a conta do organizador, registada por um administrador.
-model Payout {
-  id           String   @id @default(cuid())
-  /// Repasse do saldo de um evento (inscrições) ou de uma federação (quotas de filiação).
-  eventId      String?
-  federationId String?
-  amountCents  Int
-  /// Referência da transferência bancária (número de operação).
-  reference    String
-  paidAt       DateTime @default(now())
-  recordedBy   String
-
-  event      Event?      @relation(fields: [eventId], references: [id])
-  federation Federation? @relation(fields: [federationId], references: [id])
-
-  @@index([eventId])
-  @@index([federationId])
 }
 
 /// Devolução total de um pagamento, pedida pelo organizador.
@@ -624,8 +694,6 @@ model Federation {
   plan           FederationPlan?
   /// Até quando o plano está pago; sem data ou no passado, a federação está inativa.
   planExpiresAt  DateTime?
-  payoutHolder   String?
-  payoutIban     String?
   /// Dados para as faturas da assinatura.
   billingName    String?
   billingNif     String?
@@ -638,9 +706,10 @@ model Federation {
   plans        MembershipPlan[]
   memberships  Membership[]
   posts        FederationPost[]
-  events       Event[]
-  payouts      Payout[]
-  planPayments FederationPlanPayment[]
+  events         Event[]
+  planPayments   FederationPlanPayment[]
+  /// Conta onde caem as quotas de filiação pagas pelos atletas.
+  paymentAccount PaymentAccount?
 }
 
 model FederationMember {
@@ -735,8 +804,11 @@ model MembershipPayment {
   failureReason     String?
   createdAt         DateTime        @default(now())
   settledAt         DateTime?
+  /// Conta da federação onde a quota caiu (nulo = simulador).
+  accountId         String?
 
   membership Membership        @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  account    PaymentAccount?   @relation(fields: [accountId], references: [id])
   refund     MembershipRefund?
 
   @@unique([provider, providerRef])
@@ -805,10 +877,12 @@ model FederationPlanPayment {
 }
 
 enum InvoiceKind {
-  /// Taxa por atleta confirmado num evento.
+  /// Taxa por atleta confirmado num evento (modelo antigo, antes dos créditos).
   PLATFORM_FEE
   /// Assinatura anual do Plano Federação.
   FEDERATION_PLAN
+  /// Compra de créditos.
+  CREDITS
 }
 
 /// Fatura emitida pela Camps aos organizadores e às federações. A numeração é sequencial e sem

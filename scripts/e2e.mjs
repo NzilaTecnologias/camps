@@ -85,6 +85,9 @@ check("organização criada aparece no painel", strip(r.html).includes(`Liga Tes
 
 const newEvent = await alice.get("/manage/events/new");
 const organizerId = newEvent.html.match(/<option value="([^"]+)"/)?.[1];
+// Uma organização nova começa sem saldo: as boas-vindas só se desbloqueiam com a primeira compra.
+await alice.submit(`/manage/organizers/${organizerId}/credits`, 'name="credits"', { credits: "50", provider: "SIMULATOR", mobile: "" });
+await alice.submit(`/manage/organizers/${organizerId}/credits`, "Simular aprovado");
 r = await alice.submit("/manage/events/new", 'name="date"', {
   organizerId, name: `Open Teste ${stamp}`, sport: "Jiu-Jitsu", date: "2027-03-20", registrationClosesOn: "2027-03-25", venue: "", city: "Rio", description: "",
 });

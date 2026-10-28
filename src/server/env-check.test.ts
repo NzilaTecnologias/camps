@@ -7,6 +7,7 @@ const good = {
   RESEND_API_KEY: "re_123",
   EMAIL_FROM: "Camps <nao-responder@camps.ao>",
   JOBS_INTERVAL_SECONDS: "30",
+  PAYMENT_SECRETS_KEY: Buffer.alloc(32, 7).toString("base64"),
   PROXYPAY_TOKEN: "t",
   PROXYPAY_POS_ID: "1",
   PROXYPAY_API_URL: "https://api.proxypay.co.ao",

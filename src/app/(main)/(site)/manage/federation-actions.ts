@@ -18,7 +18,6 @@ import {
   removeFederationOrganizer,
   setMembershipPlanActive,
   updateFederationBilling,
-  updateFederationPayoutDetails,
   updateFederationSettings,
 } from "@/server/federations";
 import { requestMembershipRefund } from "@/server/memberships";
@@ -118,14 +117,6 @@ export async function deletePostAction(federationId: string, postId: string) {
   return runAction(async () => {
     const user = await requireUser();
     changed(await deletePost(user.id, federationId, postId));
-    refresh();
-  });
-}
-
-export async function updateFederationPayoutAction(federationId: string, _state: ActionState, formData: FormData) {
-  return runAction(async () => {
-    const user = await requireUser();
-    await updateFederationPayoutDetails(user.id, federationId, text(formData, "holder"), text(formData, "iban"));
     refresh();
   });
 }

@@ -1,12 +1,15 @@
-// Preço da Camps para os organizadores. Fica numa variável de ambiente para se poder ajustar
-// sem mexer no código; cada evento grava o valor em vigor quando é criado.
+// Preços da Camps. Ficam em variáveis de ambiente para se poderem ajustar sem mexer no código.
 
-const DEFAULT_FEE_KZ = 500;
+const DEFAULT_CREDIT_KZ = 1000;
 
-/** Taxa por atleta confirmado, em cêntimos de kwanza (PLATFORM_FEE_PER_ATHLETE_KZ, por omissão 500 Kz). */
-export function platformFeePerAthleteCents(): number {
-  const kz = Number(process.env.PLATFORM_FEE_PER_ATHLETE_KZ);
-  return Math.round((Number.isFinite(kz) && kz >= 0 ? kz : DEFAULT_FEE_KZ) * 100);
+/**
+ * Preço de um crédito avulso (1 atleta confirmado num evento), em cêntimos de kwanza:
+ * CREDIT_PRICE_KZ, por omissão 1000 Kz. Os pacotes saem com desconto sobre este (lib/credits.ts).
+ */
+export function creditPriceCents(): number {
+  const raw = process.env.CREDIT_PRICE_KZ;
+  const kz = Number(raw);
+  return Math.round((raw && Number.isFinite(kz) && kz > 0 ? kz : DEFAULT_CREDIT_KZ) * 100);
 }
 
 /** E-mails (separados por vírgulas) que são sempre administradores da área /admin (src/server/admin/session.ts). */

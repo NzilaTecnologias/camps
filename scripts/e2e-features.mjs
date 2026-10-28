@@ -147,6 +147,9 @@ await org.signup("/signup", { name: "Organizadora Teste", email: orgEmail, passw
 await org.submit("/manage", 'name="name"', { name: `Clube Feat ${stamp}` });
 r = await org.get("/manage/events/new");
 const organizerId = r.html.match(/<option value="([^"]+)"/)?.[1];
+// Uma organização nova começa sem saldo: as boas-vindas só se desbloqueiam com a primeira compra.
+await org.submit(`/manage/organizers/${organizerId}/credits`, 'name="credits"', { credits: "50", provider: "SIMULATOR", mobile: "" });
+await org.submit(`/manage/organizers/${organizerId}/credits`, "Simular aprovado");
 
 async function eventWithMatch(sport, names) {
   r = await org.submit("/manage/events/new", 'name="date"', {
@@ -239,31 +242,28 @@ await runJobs();
 box = await mailbox(org, orgEmail);
 check("avisos não se repetem na volta seguinte", countOf(box, `Lembrete: Judo Feat ${stamp}`) === before && countOf(box, "Resultado: Kenji Tavares —") === 1);
 
-// ---------------------------------------------------------------- Faturas da taxa
+// ---------------------------------------------------------------- Faturas dos créditos
 const admin = new Browser();
 await admin.submit("/admin/login", "password", { email: "admin@camps.local", password: "camps-admin" });
-const billingPath = `${judo.eventPath}/billing`;
-r = await org.submit(billingPath, 'name="billingNif"', { billingName: "Clube Feat Lda", billingNif: "123", billingAddress: "Rua 1, Luanda" });
+const paymentsPath = `/manage/organizers/${organizerId}/payments`;
+const creditsPath = `/manage/organizers/${organizerId}/credits`;
+r = await org.submit(paymentsPath, 'name="billingNif"', { billingName: "Clube Feat Lda", billingNif: "123", billingAddress: "Rua 1, Luanda" });
 check("NIF inválido é recusado", r.html.includes("NIF inválido"));
-await org.submit(billingPath, 'name="billingNif"', { billingName: "Clube Feat Lda", billingNif: "5417 000 111", billingAddress: "Rua 1, Talatona, Luanda" });
-r = await org.get(billingPath);
+await org.submit(paymentsPath, 'name="billingNif"', { billingName: "Clube Feat Lda", billingNif: "5417 000 111", billingAddress: "Rua 1, Talatona, Luanda" });
+r = await org.get(paymentsPath);
 check("dados de faturação ficam guardados", r.html.includes('value="5417000111"'));
-// Botão "Faturar a taxa agora" da linha deste evento: o formulário leva o id do evento num campo escondido.
-const judoEventId = judo.eventPath.split("/").pop();
-const feeForm = (raw) =>
-  (raw.replace(/<script[\s\S]*?<\/script>/g, "").match(/<form[\s\S]*?<\/form>/g) ?? [])
-    .filter((form) => form.includes("Faturar a taxa agora"))
-    .findIndex((form) => form.includes(judoEventId));
-r = await admin.get("/admin/payouts");
-await admin.submit("/admin/payouts", "Faturar a taxa agora", {}, feeForm(r.html));
-r = await org.get(billingPath);
+r = await org.submit(creditsPath, 'name="credits"', { credits: "49", provider: "SIMULATOR", mobile: "" });
+check("compra de menos de 50 créditos é recusada", r.html.includes("Escolha entre 50 e"));
+await org.submit(creditsPath, 'name="credits"', { credits: "50", provider: "SIMULATOR", mobile: "" });
+await org.submit(creditsPath, "Simular aprovado");
+r = await org.get(creditsPath);
 const invoicePath = r.html.match(/href="(\/invoices\/\w+)"/)?.[1];
-check("fatura da taxa aparece ao organizador", Boolean(invoicePath) && /FR CAMPS\d{4}\/\d+/.test(strip(r.html)), strip(r.html).slice(0, 200));
+check("fatura da compra de créditos aparece ao organizador", Boolean(invoicePath) && /FR CAMPS\d{4}\/\d+/.test(strip(r.html)), strip(r.html).slice(0, 200));
 r = await org.get(invoicePath);
 page = strip(r.html);
 check(
-  "fatura com cliente, NIF, 2 atletas × 500 Kz e IVA incluído",
-  /Clube Feat Lda/.test(page) && /NIF 5417000111/.test(page) && /1\s000,00\sKz/.test(page) && /IVA \(\s?14 %\)/.test(page) && /Documento interno/.test(page),
+  "fatura com cliente, NIF, 50 créditos × 1000 Kz e IVA incluído",
+  /Clube Feat Lda/.test(page) && /NIF 5417000111/.test(page) && /Créditos Camps/.test(page) && /50\s000,00\sKz/.test(page) && /IVA \(\s?14 %\)/.test(page) && /Documento interno/.test(page),
   page.slice(0, 600),
 );
 r = await new Browser().get(invoicePath);
@@ -272,14 +272,15 @@ const stranger = new Browser();
 await stranger.signup("/signup", { name: "Estranho", email: `estranho${stamp}@teste.local`, password: "senha-estranha-1" });
 r = await stranger.get(invoicePath);
 check("fatura não abre para quem não é da organização", !strip(r.html).includes("Clube Feat Lda"));
+r = await stranger.get(creditsPath);
+check("os créditos não abrem para quem não é da organização", !strip(r.html).includes("Clube Feat Lda") && !r.html.includes('name="credits"'));
 // A equipa vê as faturas na administração; a página do site é só do cliente.
 r = await admin.get(`/admin${invoicePath}`);
 check("administrador abre a fatura na administração", strip(r.html).includes("Clube Feat Lda"));
 r = await admin.get(invoicePath);
 check("a sessão de administração não abre a página do cliente", !strip(r.html).includes("Clube Feat Lda"));
-r = await admin.get("/admin/payouts");
-r = await admin.submit("/admin/payouts", "Faturar a taxa agora", {}, feeForm(r.html));
-check("sem atletas novos não sai outra fatura", r.html.includes("Não há atletas confirmados por faturar"));
+r = await admin.get("/admin/payments");
+check("a compra de créditos aparece nos pagamentos da administração", /Créditos [^]*?50\s000,00\sKz/.test(strip(r.html)));
 await runJobs();
 check("fatura chega por e-mail ao dono", (await mailbox(org, orgEmail)).includes("Fatura FR CAMPS"));
 

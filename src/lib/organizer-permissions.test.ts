@@ -8,7 +8,7 @@ describe("canOrganizer", () => {
     }
   });
 
-  it("o gestor gere os eventos e os reembolsos, mas não a equipa nem a conta dos repasses", () => {
+  it("o gestor gere os eventos e os reembolsos, mas não a equipa nem a conta de pagamentos", () => {
     expect(canOrganizer("ADMIN", "event")).toBe(true);
     expect(canOrganizer("ADMIN", "money")).toBe(true);
     expect(canOrganizer("ADMIN", "payout")).toBe(false);

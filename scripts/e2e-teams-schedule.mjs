@@ -86,6 +86,9 @@ let r = await owner.get("/manage");
 const organizerId = r.html.match(/\/manage\/organizers\/(\w+)\/team/)?.[1];
 check("o painel liga à equipa da organização", Boolean(organizerId));
 const teamPath = `/manage/organizers/${organizerId}/team`;
+// Uma organização nova começa sem saldo: as boas-vindas só se desbloqueiam com a primeira compra.
+await owner.submit(`/manage/organizers/${organizerId}/credits`, 'name="credits"', { credits: "50", provider: "SIMULATOR", mobile: "" });
+await owner.submit(`/manage/organizers/${organizerId}/credits`, "Simular aprovado");
 
 r = await owner.submit(teamPath, 'name="role"', { email: `ninguem${stamp}@teste.local`, role: "STAFF" });
 check("e-mail sem conta é recusado", refused(r, "Não há nenhuma conta com esse e-mail"));
@@ -123,7 +126,7 @@ r = await staff.get(eventPath);
 page = strip(r.html);
 check("o menu do mesário não tem página do evento, pagamentos nem faturação", !r.html.includes(`${eventPath}/settings"`) && !r.html.includes(`${eventPath}/payments"`) && r.html.includes(`${eventPath}/weigh-in"`) && r.html.includes(`${eventPath}/schedule"`));
 check("o mesário não vê a receita nem o botão de publicar", !page.includes("Receita líquida") && !page.includes("Publicar evento"));
-for (const section of ["settings", "divisions", "discounts", "payments", "billing"]) {
+for (const section of ["settings", "divisions", "discounts", "payments", "credits"]) {
   r = await staff.get(`${eventPath}/${section}`);
   check(`o mesário não abre ${section}`, strip(r.html).includes(NO_ACCESS), strip(r.html).slice(0, 200));
 }
@@ -134,11 +137,13 @@ check("o mesário não cria eventos", strip(r.html).includes("peça ao dono da s
 r = await staff.get(lightPath);
 check("o mesário vê a categoria sem os formulários de gestão", r.status === 200 && !r.html.includes('name="firstName"') && !r.html.includes("Gerar chave"));
 
-// O gestor gere o evento mas não a conta dos repasses.
+// O gestor gere o evento mas não a conta de pagamentos.
 r = await manager.get(`${eventPath}/settings`);
 check("o gestor abre a página do evento", !strip(r.html).includes(NO_ACCESS) && r.html.includes('name="name"'));
-r = await manager.get(`${eventPath}/billing`);
-check("o gestor vê o extrato mas não muda o IBAN", strip(r.html).includes("Só o dono da organização muda a conta") && !r.html.includes('name="iban"'));
+r = await manager.get(`${eventPath}/credits`);
+check("o gestor vê os créditos mas não liga a conta de pagamentos", strip(r.html).includes("Créditos gastos") && strip(r.html).includes("Só o dono da organização a pode ligar"));
+r = await manager.get(`/manage/organizers/${organizerId}/payments`);
+check("o gestor não abre a conta de pagamentos", r.status === 404 || r.html.includes("NEXT_HTTP_ERROR_FALLBACK;404"));
 r = await manager.get(teamPath);
 check("o gestor não gere a equipa", !r.html.includes('name="role"'));
 

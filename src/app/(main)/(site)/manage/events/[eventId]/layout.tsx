@@ -1,12 +1,17 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense, type ReactNode } from "react";
 import { ActionForm } from "@/components/action-form";
 import { EventNav } from "@/components/manage/event-nav";
 import { EventStatusBadge } from "@/components/status-badges";
+import { Notice } from "@/components/manage/parts";
 import { BackLink, Icon, LinkButton } from "@/components/ui";
-import { formatDateRange } from "@/lib/format";
+import { count, formatDateRange } from "@/lib/format";
 import { ORGANIZER_ROLE_LABEL, canOrganizer } from "@/lib/organizer-permissions";
 import { requireUser } from "@/server/auth";
+import { creditsDue } from "@/server/credits";
+import { prisma } from "@/lib/db";
+import { describeAccount, getPaymentAccount } from "@/server/payment-accounts";
 import { getEventWorkspace } from "@/server/organizer";
 import { setEventStatusAction } from "../../actions";
 
@@ -16,6 +21,13 @@ async function Workspace({ params, children }: { params: Promise<{ eventId: stri
   const event = await getEventWorkspace(user.id, eventId);
   if (!event) notFound();
   const isPublished = event.status === "PUBLISHED";
+  const [due, paidDivisions, account] = await Promise.all([
+    creditsDue(event.id),
+    prisma.division.count({ where: { eventId: event.id, priceCents: { gt: 0 } } }),
+    getPaymentAccount({ organizerId: event.organizerId }),
+  ]);
+  const view = describeAccount(account);
+  const cannotCharge = paidDivisions > 0 && !view.proxypay.configured && !view.paypal.configured;
 
   return (
     <>
@@ -64,6 +76,38 @@ async function Workspace({ params, children }: { params: Promise<{ eventId: stri
           )}
         </div>
       </header>
+
+      {due > 0 && (
+        <div className="mb-6">
+          <Notice tone="danger">
+            Faltam <strong>{count(due, "crédito", "créditos")}</strong> (1 por atleta confirmado). As inscrições continuam a entrar,
+            mas gerar chaves, programar e chamar lutas ao placar fica bloqueado até os comprar.{" "}
+            {canOrganizer(event.role, "money") ? (
+              <Link href={`/manage/organizers/${event.organizerId}/credits`} className="font-semibold underline">
+                Comprar créditos
+              </Link>
+            ) : (
+              "Peça ao dono ou a um gestor da organização para os comprar."
+            )}
+          </Notice>
+        </div>
+      )}
+
+      {cannotCharge && event.status !== "CANCELLED" && (
+        <div className="mb-6">
+          <Notice>
+            Há categorias pagas, mas a organização ainda não ligou uma conta para receber as inscrições: os atletas não
+            conseguem inscrever-se nelas online.{" "}
+            {canOrganizer(event.role, "payout") ? (
+              <Link href={`/manage/organizers/${event.organizerId}/payments`} className="font-semibold underline">
+                Ligar Multicaixa Express ou PayPal
+              </Link>
+            ) : (
+              "Só o dono da organização a pode ligar."
+            )}
+          </Notice>
+        </div>
+      )}
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[14rem_minmax(0,1fr)]">
         <aside className="min-w-0">

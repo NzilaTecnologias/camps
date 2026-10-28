@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { normalizeAngolanMobile } from "@/lib/phone";
 import { safeNext } from "@/lib/safe-next";
 import { multicaixaExpress } from "./multicaixa-express";
@@ -31,16 +31,17 @@ const input: StartInput = {
 const header = (call: Call, name: string) => (call.init.headers as Record<string, string>)[name];
 const jsonBody = (call: Call) => JSON.parse(call.init.body as string);
 
-beforeEach(() => {
-  vi.stubEnv("PROXYPAY_API_URL", "https://api.sandbox.proxypay.co.ao");
-  vi.stubEnv("PROXYPAY_TOKEN", "token-proxypay");
-  vi.stubEnv("PROXYPAY_POS_ID", "1234");
-  vi.stubEnv("PAYPAL_API_URL", "https://api-m.sandbox.paypal.com");
-  vi.stubEnv("PAYPAL_CLIENT_ID", "client");
-  vi.stubEnv("PAYPAL_CLIENT_SECRET", "secret");
-  vi.stubEnv("PAYPAL_CURRENCY", "USD");
-  vi.stubEnv("PAYPAL_EXCHANGE_RATE", "920");
-});
+// As credenciais de uma conta (a da Camps ou a de uma organização) passam-se ao criar o provedor.
+const mcxCredentials = { baseUrl: "https://api.sandbox.proxypay.co.ao", token: "token-proxypay", posId: 1234 };
+const paypalCredentials = {
+  baseUrl: "https://api-m.sandbox.paypal.com",
+  clientId: "client",
+  clientSecret: "secret",
+  currency: "USD",
+  exchangeRate: 920,
+};
+const mcx = multicaixaExpress(mcxCredentials);
+const pp = paypal(paypalCredentials);
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -49,14 +50,14 @@ afterEach(() => {
 
 describe("Multicaixa Express (ProxyPay)", () => {
   it("só fica disponível com token e POS configurados", () => {
-    expect(multicaixaExpress.isConfigured()).toBe(true);
-    vi.stubEnv("PROXYPAY_POS_ID", "");
-    expect(multicaixaExpress.isConfigured()).toBe(false);
+    expect(mcx.isConfigured()).toBe(true);
+    expect(multicaixaExpress({ ...mcxCredentials, posId: Number.NaN }).isConfigured()).toBe(false);
+    expect(multicaixaExpress(null).isConfigured()).toBe(false);
   });
 
   it("cria a transação com valor em kwanzas, telemóvel, idempotência e callback", async () => {
     const calls = mockFetch({ status: 201, body: { id: 987, type: "payment" } });
-    const started = await multicaixaExpress.start(input);
+    const started = await mcx.start(input);
 
     expect(started).toEqual({ providerRef: "987", chargeCurrency: "AOA", chargeAmountCents: 1_500_000 });
     expect(calls[0].url).toBe("https://api.sandbox.proxypay.co.ao/opg/v1/transactions");
@@ -73,14 +74,14 @@ describe("Multicaixa Express (ProxyPay)", () => {
 
   it("não pede callback para um endereço local", async () => {
     const calls = mockFetch({ status: 201, body: { id: 1 } });
-    await multicaixaExpress.start({ ...input, appUrl: "http://localhost:3000" });
+    await mcx.start({ ...input, appUrl: "http://localhost:3000" });
     expect(jsonBody(calls[0])).not.toHaveProperty("callback_url");
   });
 
   it("recusa moeda que não seja kwanza e pedido sem telemóvel, sem chamar a API", async () => {
     const calls = mockFetch();
-    await expect(multicaixaExpress.start({ ...input, currency: "USD" })).rejects.toThrow(/kwanzas/);
-    await expect(multicaixaExpress.start({ ...input, mobile: null })).rejects.toThrow(/telemóvel/);
+    await expect(mcx.start({ ...input, currency: "USD" })).rejects.toThrow(/kwanzas/);
+    await expect(mcx.start({ ...input, mobile: null })).rejects.toThrow(/telemóvel/);
     expect(calls).toHaveLength(0);
   });
 
@@ -91,15 +92,15 @@ describe("Multicaixa Express (ProxyPay)", () => {
       { body: { id: 987, status: "rejected", status_reason: "2001" } },
       { body: { id: 987, status: "rejected", status_reason: 9999 } },
     );
-    expect(await multicaixaExpress.check("987")).toEqual({ status: "PENDING" });
-    expect(await multicaixaExpress.check("987")).toEqual({ status: "SUCCEEDED" });
-    expect(await multicaixaExpress.check("987")).toEqual({ status: "FAILED", reason: "Saldo insuficiente" });
-    expect(await multicaixaExpress.check("987")).toEqual({ status: "FAILED", reason: "Pagamento recusado" });
+    expect(await mcx.check("987")).toEqual({ status: "PENDING" });
+    expect(await mcx.check("987")).toEqual({ status: "SUCCEEDED" });
+    expect(await mcx.check("987")).toEqual({ status: "FAILED", reason: "Saldo insuficiente" });
+    expect(await mcx.check("987")).toEqual({ status: "FAILED", reason: "Pagamento recusado" });
   });
 
   it("falha quando a API responde com erro", async () => {
     mockFetch({ status: 401, body: { message: "Your API key is wrong." } });
-    await expect(multicaixaExpress.start(input)).rejects.toThrow(/401/);
+    await expect(mcx.start(input)).rejects.toThrow(/401/);
   });
 });
 
@@ -108,13 +109,12 @@ describe("PayPal", () => {
 
   it("converte kwanzas para a moeda do PayPal arredondando para cima", () => {
     // 15 000,00 Kz a 920 Kz por dólar = 16,304... → 16,31 USD
-    expect(convertForPayPal(1_500_000, "AOA")).toEqual({ chargeCurrency: "USD", chargeAmountCents: 1631 });
-    expect(convertForPayPal(2500, "USD")).toEqual({ chargeCurrency: "USD", chargeAmountCents: 2500 });
+    expect(convertForPayPal(1_500_000, "AOA", paypalCredentials)).toEqual({ chargeCurrency: "USD", chargeAmountCents: 1631 });
+    expect(convertForPayPal(2500, "USD", paypalCredentials)).toEqual({ chargeCurrency: "USD", chargeAmountCents: 2500 });
   });
 
   it("recusa converter sem taxa de câmbio configurada", () => {
-    vi.stubEnv("PAYPAL_EXCHANGE_RATE", "");
-    expect(() => convertForPayPal(1_500_000, "AOA")).toThrow(/não está disponível/);
+    expect(() => convertForPayPal(1_500_000, "AOA", { ...paypalCredentials, exchangeRate: 0 })).toThrow(/não está disponível/);
   });
 
   it("cria a ordem em dólares e devolve o endereço de aprovação", async () => {
@@ -126,7 +126,7 @@ describe("PayPal", () => {
         links: [{ rel: "payer-action", href: "https://www.sandbox.paypal.com/checkoutnow?token=ORDER-1" }],
       },
     });
-    const started = await paypal.start(input);
+    const started = await pp.start(input);
 
     expect(started).toEqual({
       providerRef: "ORDER-1",
@@ -148,7 +148,7 @@ describe("PayPal", () => {
 
   it("não captura uma ordem que o utilizador ainda não aprovou", async () => {
     const calls = mockFetch(token, { body: { id: "ORDER-1", status: "PAYER_ACTION_REQUIRED" } });
-    expect(await paypal.check("ORDER-1")).toEqual({ status: "PENDING" });
+    expect(await pp.check("ORDER-1")).toEqual({ status: "PENDING" });
     expect(calls).toHaveLength(2);
   });
 
@@ -161,7 +161,7 @@ describe("PayPal", () => {
         purchase_units: [{ payments: { captures: [{ status: "COMPLETED" }] } }],
       },
     });
-    expect(await paypal.check("ORDER-1")).toEqual({ status: "SUCCEEDED" });
+    expect(await pp.check("ORDER-1")).toEqual({ status: "SUCCEEDED" });
     expect(calls[3].url).toBe("https://api-m.sandbox.paypal.com/v2/checkout/orders/ORDER-1/capture");
     expect(calls[3].init.method).toBe("POST");
   });
@@ -171,8 +171,8 @@ describe("PayPal", () => {
       body: { id: "ORDER-1", status: "COMPLETED", purchase_units: [{ payments: { captures: [{ status }] } }] },
     });
     mockFetch(token, captured("DECLINED"), token, captured("PENDING"));
-    expect(await paypal.check("ORDER-1")).toEqual({ status: "FAILED", reason: "O PayPal recusou o pagamento" });
-    expect(await paypal.check("ORDER-1")).toEqual({ status: "PENDING" });
+    expect(await pp.check("ORDER-1")).toEqual({ status: "FAILED", reason: "O PayPal recusou o pagamento" });
+    expect(await pp.check("ORDER-1")).toEqual({ status: "PENDING" });
   });
 });
 
@@ -205,7 +205,7 @@ describe("reembolsos", () => {
 
   it("Multicaixa Express pede uma transação refund ligada ao pagamento", async () => {
     const calls = mockFetch({ status: 201, body: { id: 555, type: "refund", parent_transaction_id: "987" } });
-    expect(await multicaixaExpress.refund(refundInput)).toEqual({ refundRef: "555", outcome: { status: "PENDING" } });
+    expect(await mcx.refund(refundInput)).toEqual({ refundRef: "555", outcome: { status: "PENDING" } });
     expect(calls[0].url).toBe("https://api.sandbox.proxypay.co.ao/opg/v1/transactions");
     expect(header(calls[0], "Idempotency-Key")).toBe("ref_1");
     expect(jsonBody(calls[0])).toEqual({
@@ -215,7 +215,7 @@ describe("reembolsos", () => {
     });
 
     mockFetch({ body: { id: 555, status: "accepted" } });
-    expect(await multicaixaExpress.checkRefund("555")).toEqual({ status: "SUCCEEDED" });
+    expect(await mcx.checkRefund("555")).toEqual({ status: "SUCCEEDED" });
   });
 
   it("PayPal devolve a captura da ordem", async () => {
@@ -226,7 +226,7 @@ describe("reembolsos", () => {
       token,
       { status: 201, body: { id: "REF-3", status: "COMPLETED" } },
     );
-    expect(await paypal.refund({ ...refundInput, providerRef: "ORDER-1" })).toEqual({
+    expect(await pp.refund({ ...refundInput, providerRef: "ORDER-1" })).toEqual({
       refundRef: "REF-3",
       outcome: { status: "SUCCEEDED" },
     });

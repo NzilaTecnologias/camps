@@ -6,7 +6,7 @@ import { federationPlanPriceCents } from "./billing-config";
 import { requireFederation } from "./federations";
 import { afterIssue, invoiceFederationPlan } from "./invoicing";
 import { kv } from "./kv";
-import { appUrl, availableProviders, getProvider, providerFor } from "./payments";
+import { appUrl, getProvider, paymentMethods, PLATFORM, providerFor, simulatorEnabled } from "./payments";
 import type { Outcome } from "./payments/types";
 
 // Assinatura do Plano Federação paga online, pelos mesmos provedores das inscrições. Quando o
@@ -32,7 +32,7 @@ export async function getPlanContext(userId: string, federationId: string) {
     payments,
     prices: { BASIC: federationPlanPriceCents("BASIC"), PREMIUM: federationPlanPriceCents("PREMIUM") },
     months: PLAN_MONTHS,
-    providers: availableProviders().map((provider) => ({ id: provider.id, label: provider.label })),
+    providers: paymentMethods(PLATFORM).map((provider) => ({ id: provider.id, label: provider.label })),
   };
 }
 
@@ -45,7 +45,7 @@ export async function startPlanPayment(
   const federation = await requireFederation(userId, federationId);
   const plan = PLANS.find((value) => value === input.plan);
   if (!plan) throw new UserError("Escolha o plano");
-  const provider = getProvider(input.provider);
+  const provider = getProvider(PLATFORM, input.provider);
   if (!provider) throw new UserError("Escolha um método de pagamento");
   const mobile = provider.id === "MULTICAIXA_EXPRESS" ? normalizeAngolanMobile(input.mobile) : null;
   if (provider.id === "MULTICAIXA_EXPRESS" && !mobile) {
@@ -133,7 +133,7 @@ export async function refreshPlanPayment(paymentId: string, options: { force?: b
   const checks = await (await kv()).incr(`paycheck:${payment.id}`, 3_000);
   if (checks > 1 && !options.force) return;
   try {
-    await settlePlanPayment(payment.id, await providerFor(payment.provider).check(payment.providerRef));
+    await settlePlanPayment(payment.id, await providerFor(payment.provider, PLATFORM).check(payment.providerRef));
   } catch (error) {
     console.error(`Não foi possível consultar o pagamento do plano ${payment.id}`, error);
   }
@@ -163,7 +163,7 @@ export async function expireStalePlanPayment(paymentId: string) {
 }
 
 export async function simulatePlanPayment(userId: string, paymentId: string, approve: boolean) {
-  if (!getProvider("SIMULATOR")) throw new UserError("O simulador de pagamentos está desligado");
+  if (!simulatorEnabled()) throw new UserError("O simulador de pagamentos está desligado");
   const payment = await prisma.federationPlanPayment.findFirst({ where: { id: paymentId, provider: "SIMULATOR" } });
   if (!payment) throw new UserError("Pagamento não encontrado");
   const federation = await requireFederation(userId, payment.federationId);

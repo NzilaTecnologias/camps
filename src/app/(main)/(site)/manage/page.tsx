@@ -113,6 +113,18 @@ async function Dashboard() {
                     <Icon name="users" />
                     Equipa ({organizer._count.members})
                   </Link>
+                  {canOrganizer(organizer.members[0].role, "money") && (
+                    <Link href={`/manage/organizers/${organizer.id}/credits`} className="inline-flex items-center gap-1.5 font-semibold text-primary hover:underline">
+                      <Icon name="wallet" />
+                      {count(organizer.credits, "crédito", "créditos")}
+                    </Link>
+                  )}
+                  {canOrganizer(organizer.members[0].role, "payout") && (
+                    <Link href={`/manage/organizers/${organizer.id}/payments`} className="inline-flex items-center gap-1.5 font-semibold text-primary hover:underline">
+                      <Icon name="settings" />
+                      Conta de pagamentos
+                    </Link>
+                  )}
                 </div>
               </div>
               {organizer.events.length === 0 ? (

@@ -17,7 +17,7 @@ async function Invoices({ searchParams }: { searchParams: PageProps<"/admin/invo
     <>
       <AdminHeader
         title="Faturas"
-        description={`Faturas da taxa por atleta e do Plano Federação (as 200 mais recentes${q ? ` de "${q}"` : ""}): ${formatMoney(total, "AOA")} no total.`}
+        description={`Faturas das compras de créditos e do Plano Federação (as 200 mais recentes${q ? ` de "${q}"` : ""}): ${formatMoney(total, "AOA")} no total.`}
       />
       <SearchBox action="/admin/invoices" q={q} placeholder="Cliente, NIF ou e-mail" />
       {invoices.length === 0 ? (
@@ -36,7 +36,7 @@ async function Invoices({ searchParams }: { searchParams: PageProps<"/admin/invo
                 {invoice.customerName}
                 <p className="text-xs text-muted">{invoice.customerNif ? `NIF ${invoice.customerNif}` : "Sem NIF"}</p>
               </td>
-              <td className="px-4 py-3 text-xs">{invoice.kind === "PLATFORM_FEE" ? "Taxa por atleta" : "Plano Federação"}</td>
+              <td className="px-4 py-3 text-xs">{{ CREDITS: "Créditos", PLATFORM_FEE: "Taxa por atleta", FEDERATION_PLAN: "Plano Federação" }[invoice.kind]}</td>
               <td className="px-4 py-3 font-semibold tabular-nums">{formatMoney(invoice.totalCents, "AOA")}</td>
               <td className="px-4 py-3">{invoice.certified ? <Badge tone="success">Certificada</Badge> : <Badge>Interna</Badge>}</td>
             </tr>

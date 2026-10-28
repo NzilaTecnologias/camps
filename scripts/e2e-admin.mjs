@@ -97,7 +97,7 @@ check("administrador entra e vai para o painel", r.status === 303 && r.location?
 check("sessão de administração própria", admin.cookies.has("camps_admin") && !admin.cookies.has("camps_session"));
 r = await admin.get("/admin");
 check("painel abre com os números da plataforma", /Olá, Admin/.test(strip(r.html)) && /Utilizadores/.test(strip(r.html)) && /Pagamentos pendentes/.test(strip(r.html)), strip(r.html).slice(0, 300));
-check("administrador vê todas as secções", ["/admin/users", "/admin/payouts", "/admin/staff", "/admin/audit", "/admin/system"].every((href) => r.html.includes(`href="${href}"`)));
+check("administrador vê todas as secções", ["/admin/users", "/admin/invoices", "/admin/staff", "/admin/audit", "/admin/system"].every((href) => r.html.includes(`href="${href}"`)));
 r = await admin.get("/manage");
 check("a sessão de administração não abre o site", r.status === 307 && r.location?.includes("/login"));
 
@@ -147,19 +147,19 @@ const support = new Browser();
 r = await support.submit("/admin/login", "password", { email: victimEmail, password: "senha-vitima-1" });
 check("suporte entra na administração", r.status === 303 && support.cookies.has("camps_admin"));
 r = await support.get("/admin");
-check("suporte só vê as secções do seu papel", r.html.includes('href="/admin/users"') && !r.html.includes('href="/admin/payouts"') && !r.html.includes('href="/admin/staff"'));
-r = await support.get("/admin/payouts");
-check("suporte não abre os repasses", r.status === 404 || !strip(r.html).includes("Repasses aos organizadores"), `${r.status}`);
+check("suporte só vê as secções do seu papel", r.html.includes('href="/admin/users"') && !r.html.includes('href="/admin/invoices"') && !r.html.includes('href="/admin/staff"'));
+r = await support.get("/admin/invoices");
+check("suporte não abre as faturas", r.status === 404 || !strip(r.html).includes("compras de créditos"), `${r.status}`);
 r = await support.get("/admin/staff");
 check("suporte não abre a equipa", r.status === 404 || !strip(r.html).includes("Acrescentar ou mudar papel"));
 const finance = new Browser();
 await finance.submit("/admin/login", "password", { email: "financeiro@camps.local", password: "camps-financeiro" });
-r = await finance.get("/admin/payouts");
-check("financeiro abre os repasses", strip(r.html).includes("Repasses aos organizadores"));
+r = await finance.get("/admin/organizers");
+check("financeiro vê os saldos de créditos e pode acertá-los", strip(r.html).includes("saldo de créditos") && r.html.includes('name="delta"'));
 r = await finance.get("/admin/users");
 check("financeiro não abre os utilizadores", r.status === 404 || !strip(r.html).includes("Abra uma conta"));
 r = await finance.get("/admin/invoices");
-check("financeiro abre as faturas", strip(r.html).includes("Faturas da taxa por atleta"));
+check("financeiro abre as faturas", strip(r.html).includes("Faturas das compras de créditos"));
 
 const staffPage = await admin.get("/admin/staff");
 const removeIndex = (staffPage.html.replace(/<script[\s\S]*?<\/script>/g, "").match(/<form[\s\S]*?<\/form>/g) ?? [])

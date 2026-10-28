@@ -2,14 +2,16 @@ import type { Metadata } from "next";
 import { CheckList, InfoHero } from "@/components/info-page";
 import { Card, LinkButton } from "@/components/ui";
 import { formatMoney } from "@/lib/format";
-import { federationPlanPriceCents, platformFeePerAthleteCents } from "@/server/billing-config";
+import { creditPriceCents, federationPlanPriceCents } from "@/server/billing-config";
+import { CREDIT_PACKS, MIN_PURCHASE, WELCOME_CREDITS, quoteCredits } from "@/lib/credits";
 import { PLAN_FEATURES, PLAN_LABEL } from "@/lib/federation-rules";
 import { Reveal } from "@/components/reveal";
 
 export const metadata: Metadata = { title: "Preços — Camps" };
 
 export default function PricingPage() {
-  const fee = formatMoney(platformFeePerAthleteCents(), "AOA");
+  const base = creditPriceCents();
+  const fee = formatMoney(base, "AOA");
   return (
     <>
       <InfoHero
@@ -48,11 +50,25 @@ export default function PricingPage() {
           <Card className="flex flex-col border-primary/40 p-7">
             <p className="text-sm font-semibold uppercase tracking-wider text-muted">Organizadores</p>
             <p className="mt-3 font-display text-6xl font-bold uppercase leading-none">{fee}</p>
-            <p className="mt-1 text-sm font-semibold">por atleta confirmado, por evento</p>
+            <p className="mt-1 text-sm font-semibold">por crédito · 1 crédito = 1 atleta confirmado num evento</p>
             <p className="mt-2 text-sm text-muted">
-              Sem mensalidade nem custos de arranque. Cada atleta conta uma vez por evento, seja em quantas categorias
-              for. As inscrições pagas online são transferidas para a sua conta depois do evento, já sem a taxa.
+              Sem mensalidade. Compra mínima de {MIN_PURCHASE} créditos; na primeira compra a organização recebe mais{" "}
+              {WELCOME_CREDITS} créditos de oferta;
+              cada atleta conta uma vez por evento, seja em quantas categorias for. As inscrições pagas caem direto na
+              conta Multicaixa Express ou PayPal da organização: a Camps não fica com o dinheiro.
             </p>
+            <ul className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
+              {CREDIT_PACKS.map((pack) => {
+                const quote = quoteCredits(pack.credits, base);
+                return (
+                  <li key={pack.credits} className="rounded-lg border border-line px-2 py-3">
+                    <p className="font-display text-2xl font-bold leading-none">{pack.credits}</p>
+                    <p className="mt-1 font-semibold">{formatMoney(quote.unitCents, "AOA")} cada</p>
+                    <p className="text-success">−{pack.discountPercent}%</p>
+                  </li>
+                );
+              })}
+            </ul>
             <div className="mt-6">
               <CheckList
                 items={[
@@ -75,7 +91,7 @@ export default function PricingPage() {
         <h2 className="mt-2 font-display text-4xl font-bold uppercase leading-none">Plano Federação</h2>
         <p className="mt-2 max-w-2xl text-sm text-muted">
           Uma página própria para a federação, com os eventos das organizações associadas, filiação de academias e
-          atletas e ranking nacional. Assinatura anual; as quotas de filiação vão inteiras para a federação.
+          atletas e ranking nacional. Assinatura anual; as quotas de filiação caem direto na conta da federação, sem taxa.
         </p>
         <div className="mt-6 grid gap-5 lg:grid-cols-2">
           {(["BASIC", "PREMIUM"] as const).map((plan) => (
@@ -99,8 +115,8 @@ export default function PricingPage() {
       </section>
 
       <p className="mt-8 text-sm text-muted">
-        Os pagamentos de inscrições são processados por Multicaixa Express ou PayPal. Os atletas pagam apenas o preço da
-        inscrição; a taxa da Camps é paga pelo organizador.
+        Os pagamentos de inscrições são processados por Multicaixa Express ou PayPal, na conta da própria organização.
+        Os atletas pagam apenas o preço da inscrição; os créditos da Camps são pagos pelo organizador.
       </p>
     </>
   );

@@ -6,11 +6,10 @@ import { SectionHeader } from "@/components/manage/parts";
 import { Badge, Card, Empty, PageTitle, buttonClass } from "@/components/ui";
 import { PLAN_LABEL, planActive } from "@/lib/federation-rules";
 import { count, formatDate, formatMoney, toDateInput } from "@/lib/format";
-import { formatIban } from "@/lib/statement";
 import { pageStaff } from "@/server/admin/session";
 import { federationPlanPriceCents } from "@/server/billing-config";
 import { listFederationsAdmin } from "@/server/federations";
-import { activateFederationPlanAction, recordFederationPayoutAction } from "../../actions";
+import { activateFederationPlanAction } from "../../actions";
 
 const money = (cents: number) => formatMoney(cents, "AOA");
 const inputClass = "h-9 rounded-lg border border-line bg-surface px-2 text-sm";
@@ -87,38 +86,17 @@ async function Federations() {
                   </ActionForm>
                 </div>
 
-                <div className="mt-4 flex flex-wrap items-end justify-between gap-4 border-t border-line pt-4 text-sm">
+                <div className="mt-4 border-t border-line pt-4 text-sm">
                   <p>
-                    Quotas recebidas <strong>{money(federation.statement.collectedCents)}</strong>
-                    {federation.statement.refundedCents > 0 && <> · reembolsado <strong>{money(federation.statement.refundedCents)}</strong></>} · transferido{" "}
-                    <strong>{money(federation.statement.paidOutCents)}</strong> · {federation.statement.balanceCents < 0 ? "em dívida" : "saldo"}{" "}
-                    <strong className={federation.statement.balanceCents < 0 ? "text-danger" : ""}>
-                      {money(Math.abs(federation.statement.balanceCents))}
-                    </strong>
-                    {federation.payoutIban ? (
-                      <span className="block font-mono text-xs text-muted">
-                        {federation.payoutHolder} · {formatIban(federation.payoutIban)}
-                      </span>
-                    ) : (
-                      <span className="block text-xs text-muted">Sem IBAN indicado</span>
-                    )}
+                    Quotas recebidas <strong>{money(federation.quotas.collectedCents)}</strong>
+                    {federation.quotas.refundedCents > 0 && <> · reembolsado <strong>{money(federation.quotas.refundedCents)}</strong></>}
+                    <span className="block text-xs text-muted">
+                      {[federation.paymentAccount?.proxypayPosId && "Multicaixa Express", federation.paymentAccount?.paypalClientId && "PayPal"]
+                        .filter(Boolean)
+                        .join(" e ") || "Sem conta de pagamentos ligada"}
+                      {" · as quotas caem direto na conta da federação"}
+                    </span>
                   </p>
-                  {federation.statement.balanceCents > 0 && federation.payoutIban && (
-                    <ActionForm action={recordFederationPayoutAction.bind(null, federation.id)} className="flex flex-wrap items-end gap-2">
-                      <input
-                        name="amount"
-                        inputMode="decimal"
-                        defaultValue={(federation.statement.balanceCents / 100).toFixed(2)}
-                        aria-label="Valor transferido em kwanzas"
-                        className={inputClass}
-                        required
-                      />
-                      <input name="reference" placeholder="Referência" aria-label="Referência da transferência" className={inputClass} required />
-                      <button type="submit" className={buttonClass("secondary", "sm")}>
-                        Registar transferência
-                      </button>
-                    </ActionForm>
-                  )}
                 </div>
               </Card>
             );

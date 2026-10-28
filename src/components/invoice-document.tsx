@@ -4,7 +4,7 @@ import { invoiceNumber, type InvoiceLine } from "@/lib/invoice";
 import { LEGAL } from "@/lib/legal";
 import { PrintButton } from "./print-button";
 
-const KIND_LABEL = { PLATFORM_FEE: "Taxa de serviço por atleta", FEDERATION_PLAN: "Assinatura do Plano Federação" } as const;
+const KIND_LABEL = { CREDITS: "Créditos Camps", PLATFORM_FEE: "Taxa de serviço por atleta", FEDERATION_PLAN: "Assinatura do Plano Federação" } as const;
 
 /** Fatura-recibo da Camps, para imprimir ou guardar em PDF (no site do cliente e na administração). */
 export function InvoiceDocument({ invoice }: { invoice: Invoice }) {

@@ -11,7 +11,7 @@ export const ROLE_LABEL: Record<StaffRole, string> = {
 
 export const ROLE_DESCRIPTION: Record<StaffRole, string> = {
   ADMIN: "Tudo, incluindo a equipa, o registo de atividade e o sistema",
-  FINANCE: "Pagamentos, repasses, faturas e planos das federações",
+  FINANCE: "Pagamentos, créditos, faturas e planos das federações",
   SUPPORT: "Utilizadores, organizações, eventos e e-mails",
 };
 
@@ -28,7 +28,7 @@ const ACCESS = {
   /** Despublicar e cancelar eventos. */
   "events.moderate": ["ADMIN", "SUPPORT"],
   emails: ["ADMIN", "SUPPORT"],
-  /** Repasses, faturas e planos das federações. */
+  /** Créditos, faturas e planos das federações. */
   finance: ["ADMIN", "FINANCE"],
   staff: ["ADMIN"],
   audit: ["ADMIN"],

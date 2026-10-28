@@ -16,7 +16,7 @@ import {
   setEventImage,
   updateEventSettings,
 } from "@/server/organizer";
-import { updateOrganizerBilling, updatePayoutDetails } from "@/server/billing";
+import { updateOrganizerBilling } from "@/server/billing";
 import { cancelRegistration, requestRefund } from "@/server/refunds";
 import { assignDivisionMats, balanceDivisionMats, generateSchedule, updateScheduleSettings } from "@/server/schedule";
 
@@ -163,14 +163,6 @@ export async function generateMissingBracketsAction(eventId: string, _state: Act
     const { generated } = await generateMissingBrackets(user.id, eventId, text(formData, "type"));
     publicDataChanged({ eventId });
     if (generated === 0) throw new UserError("Nenhuma categoria sem chave tem pelo menos dois atletas aptos");
-    refresh();
-  });
-}
-
-export async function updatePayoutDetailsAction(organizerId: string, _state: ActionState, formData: FormData) {
-  return runAction(async () => {
-    const user = await requireUser();
-    await updatePayoutDetails(user.id, organizerId, text(formData, "holder"), text(formData, "iban"));
     refresh();
   });
 }

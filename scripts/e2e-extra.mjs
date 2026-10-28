@@ -133,35 +133,41 @@ await carol.submit(regPath, "Simular aprovado");
 r = await carol.get(regPath);
 check("inscrição paga de 1000 Kz", /1\s000,00\sKz pagos/.test(strip(r.html)), strip(r.html).slice(0, 300));
 
-// Faturação: taxa por atleta, conta para repasses e transferência registada pelo administrador
-const B = `${E}/billing`;
-r = await alice.get(B);
-check("extrato: 1 atleta, taxa de 500 Kz e saldo de 500 Kz", /Atletas confirmados 1\b/.test(strip(r.html)) && /Saldo a transferir 500,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 600));
-r = await alice.submit(B, 'name="iban"', { holder: "Liga X Lda", iban: "AO16004000001234567810174" });
-check("IBAN com dígitos de controlo errados é recusado", r.html.includes("IBAN inválido"));
-await alice.submit(B, 'name="iban"', { holder: "Liga X Lda", iban: "ao15 0040 0000 1234 5678 1017 4" });
-r = await alice.get(B);
-check("IBAN válido fica guardado e formatado", strip(r.html).includes("AO15 0040 0000 1234 5678 1017 4"));
-r = await bob.replay(alice, B, 'name="iban"', { holder: "Bob", iban: "AO15004000001234567810174" });
-check("outro utilizador não muda a conta da organização", r.html.includes("Só o dono da organização pode mudar a conta"));
-r = await alice.get("/admin/payouts");
-check("organizador sem permissão não vê os repasses", r.status === 404 || !strip(r.html).includes("Repasses aos organizadores"));
+// Créditos: a organização nova começa sem saldo e as boas-vindas ficam bloqueadas até comprar
+const C = `${E}/credits`;
+const OC = `/manage/organizers/${organizerId}/credits`;
+const OP = `/manage/organizers/${organizerId}/payments`;
+r = await alice.get(C);
+check("evento: 1 atleta confirmado e por cobrar, saldo 0", /Atletas confirmados 1\b/.test(strip(r.html)) && /Créditos gastos 0\b/.test(strip(r.html)) && /Por cobrar 1\b/.test(strip(r.html)) && /Saldo da organização 0\b/.test(strip(r.html)), strip(r.html).match(/Atletas confirmados.{0,300}/)?.[0]);
+r = await alice.get(OC);
+check("créditos da organização: 20 de boas-vindas bloqueados e saldo 0", /20 créditos de boas-vindas à espera/.test(strip(r.html)) && /Saldo 0 créditos/.test(strip(r.html)), strip(r.html).slice(0, 600));
+
+// Conta de pagamentos da organização: o dinheiro das inscrições cai direto nela
+r = await alice.submit(OP, 'name="posId"', { token: "", posId: "123", sandbox: "on" });
+check("ProxyPay sem token é recusado", r.html.includes("Indique o token da API da ProxyPay"));
+await alice.submit(OP, 'name="posId"', { token: "token-de-teste-proxypay", posId: "123", sandbox: "on" });
+r = await alice.get(OP);
+check("ProxyPay ligado em testes, sem voltar a mostrar o token", strip(r.html).includes("Ligado (testes)") && !r.html.includes("token-de-teste-proxypay"), strip(r.html).slice(0, 400));
+r = await alice.submit(OP, 'name="clientId"', { clientId: "client-id-de-teste", secret: "segredo-de-teste", currency: "AOA", exchangeRate: "950" });
+check("PayPal em kwanzas é recusado", r.html.includes("moeda da conta PayPal"));
+r = await bob.replay(alice, OP, 'name="posId"', { token: "x".repeat(20), posId: "9", sandbox: "on" });
+check("outro utilizador não muda a conta de pagamentos", r.html.includes("Só o dono da organização pode ligar a conta de pagamentos"));
+r = await bob.get(OP);
+check("outro utilizador não abre a conta de pagamentos", r.status === 404 || r.html.includes("NEXT_HTTP_ERROR_FALLBACK;404"));
+
+// Acerto do saldo pela equipa financeira da Camps
 const admin = new Browser();
 await admin.submit("/admin/login", "password", { email: "admin@camps.local", password: "camps-admin" });
-r = await admin.get("/admin/payouts");
-check("administrador vê o evento na fila de repasses", strip(r.html).includes(`Torneio X ${stamp}`) && /Liga X Lda/.test(strip(r.html)), strip(r.html).slice(0, 300));
-// Formulário de repasse da linha deste evento (o primeiro que aparece depois do nome dele na fila).
-const payoutForm = (html) =>
-  (html.match(/<form[\s\S]*?<\/form>/g) ?? [])
-    .filter((form) => form.includes('name="reference"'))
-    .findIndex((form) => html.indexOf(form) > html.indexOf(`Torneio X ${stamp}`));
-r = await admin.get("/admin/payouts");
-r = await admin.submit("/admin/payouts", 'name="reference"', { amount: "600", reference: "TRF-001" }, payoutForm(r.html));
-check("repasse acima do saldo é recusado", r.html.includes("passa do saldo"));
-r = await admin.get("/admin/payouts");
-await admin.submit("/admin/payouts", 'name="reference"', { amount: "300", reference: "TRF-001" }, payoutForm(r.html));
-r = await alice.get(B);
-check("organizador vê a transferência e o saldo que falta", /TRF-001/.test(strip(r.html)) && /Saldo a transferir 200,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 600));
+const AO = `/admin/organizers?q=${encodeURIComponent(`Liga X ${stamp}`)}`;
+r = await admin.get(AO);
+check("administração mostra o saldo e a conta ligada", /Liga X \d+/.test(strip(r.html)) && strip(r.html).includes("Multicaixa Express (testes)"), strip(r.html).slice(0, 400));
+r = await admin.submit(AO, 'name="delta"', { delta: "-100", note: "Teste de saldo negativo" });
+check("acerto que deixa o saldo negativo é recusado", r.html.includes("não pode ficar negativo"));
+await admin.submit(AO, 'name="delta"', { delta: "1", note: "Crédito de cortesia para o teste" });
+r = await alice.get(OC);
+check("acerto aparece nos movimentos e é gasto no atleta por cobrar", /Acerto da Camps/.test(strip(r.html)) && /Saldo 0 créditos/.test(strip(r.html)), strip(r.html).slice(0, 600));
+r = await alice.get(C);
+check("o atleta por cobrar fica pago com o acerto", /Créditos gastos 1\b/.test(strip(r.html)) && /Por cobrar 0\b/.test(strip(r.html)), strip(r.html).match(/Atletas confirmados.{0,300}/)?.[0]);
 
 // Pesagem: gravar e apagar
 const W = `${E}/weigh-in`;
@@ -193,14 +199,26 @@ r = await alice.get(P);
 check("reembolso manual registado", /Reembolsado/.test(strip(r.html)) && /Devolvido fora da plataforma/.test(strip(r.html)), strip(r.html).slice(0, 400));
 r = await carol.get(regPath);
 check("atleta vê o reembolso", /cancelada e reembolsada/.test(strip(r.html)));
-r = await alice.get(B);
-check("depois do reembolso a taxa mantém-se e o organizador fica a dever", /Em dívida à Camps 800,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 600));
+r = await alice.get(C);
+check("depois do reembolso o crédito gasto não volta", /Créditos gastos 1\b/.test(strip(r.html)), strip(r.html).slice(0, 600));
 
 // Cronómetro: reiniciar
 await alice.submit(`${E}/scoreboard`, 'placeholder="Área 1"', { name: "Área 1" });
 for (const [firstName, lastName] of [["Um", "Lutador"], ["Dois", "Lutador"]]) {
   await alice.submit(`${E}/divisions/${divId}`, 'name="firstName"', { firstName, lastName, birthDate: "1997-01-05", academyName: "" });
 }
+r = await alice.submit(`${E}/brackets`, "Gerar chaves em falta", { type: "SINGLE_ELIMINATION" });
+check("sem créditos não se geram chaves", r.html.includes("Faltam 2 créditos"), strip(r.html).slice(0, 300));
+r = await alice.get(E);
+check("o painel do evento avisa dos créditos em falta", /Faltam 2 créditos/.test(strip(r.html)));
+r = await alice.submit(OC, 'name="credits"', { credits: "10", provider: "SIMULATOR", mobile: "" });
+check("compra de menos de 50 créditos é recusada", r.html.includes("Escolha entre 50 e"));
+await alice.submit(OC, 'name="credits"', { credits: "100", provider: "SIMULATOR", mobile: "" });
+await alice.submit(OC, "Simular aprovado");
+r = await alice.get(OC);
+check("compra de 100 créditos (900 Kz cada) desbloqueia os 20 de boas-vindas e paga os 2 em falta", /Saldo 118 créditos/.test(strip(r.html)) && /desbloqueada com a primeira compra/.test(strip(r.html)) && /90\s000,00\sKz/.test(strip(r.html)) && /FR CAMPS/.test(strip(r.html)) && !/de boas-vindas à espera/.test(strip(r.html)), strip(r.html).slice(0, 900));
+r = await alice.get(`/dev/mailbox?to=${encodeURIComponent(`ax${stamp}@t.local`)}`);
+check("a fatura dos créditos chega por e-mail", r.html.includes("Fatura FR CAMPS"));
 await alice.submit(`${E}/brackets`, "Gerar chaves em falta", { type: "SINGLE_ELIMINATION" });
 r = await alice.get(`${E}/scoreboard`);
 const control = r.html.match(/\/manage\/matches\/\w+\/scoreboard/)?.[0];
@@ -325,13 +343,13 @@ check("atleta filiado já se inscreve no evento", r.status === 303 && /^\/regist
 
 r = await alice.get(`${F}/members`);
 check("federação vê o atleta filiado", /Nzuzi Fed/.test(strip(r.html)) && /Em dia/.test(strip(r.html)));
-await alice.submit(`${F}/payouts`, 'name="iban"', { holder: "Fed X", iban: "AO15004000001234567810174" });
-r = await alice.get(`${F}/payouts`);
-check("quotas recebidas e saldo da federação", /Quotas recebidas 3\s000,00\sKz/.test(strip(r.html)) && /Saldo a receber 3\s000,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 500));
-r = await admin.get("/admin/federations");
-await admin.submit("/admin/federations", 'name="reference"', { amount: "3000", reference: "FED-001" }, fedForm(r.html, "reference"));
-r = await alice.get(`${F}/payouts`);
-check("repasse das quotas registado", /FED-001/.test(strip(r.html)) && /Saldo a receber 0,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 500));
+r = await alice.get(`${F}/payments`);
+check("quotas recebidas pela federação, sem taxa", /Quotas recebidas 3\s000,00\sKz/.test(strip(r.html)) && /Líquido 3\s000,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 500));
+await alice.submit(`${F}/payments`, 'name="clientId"', { clientId: "fed-client-id-teste", secret: "fed-segredo-teste", currency: "EUR", exchangeRate: "1050", sandbox: "on" });
+r = await alice.get(`${F}/payments`);
+check("federação liga o PayPal dela", strip(r.html).includes("Ligado (testes)") && !r.html.includes("fed-segredo-teste"), strip(r.html).slice(0, 500));
+r = await bob.replay(alice, `${F}/payments`, 'name="clientId"', { clientId: "bob-client-id-1", secret: "bob-segredo-1", currency: "USD", exchangeRate: "900" });
+check("outro utilizador não muda a conta da federação", r.html.includes("Federação não encontrada"), strip(r.html).slice(0, 200));
 
 // Reembolso de quotas: automático (pelo provedor) e manual
 const M = `${F}/members`;
@@ -346,8 +364,8 @@ r = await carol.get(membershipPath);
 check("atleta vê a filiação cancelada e reembolsada", /Filiação cancelada e reembolsada/.test(strip(r.html)) && /3\s000,00\sKz devolvidos/.test(strip(r.html)), strip(r.html).slice(0, 300));
 r = await carol.get(`/dev/mailbox?to=${encodeURIComponent(`cx${stamp}@t.local`)}`);
 check("e-mail de reembolso da quota chega", r.html.includes(`Reembolso da quota: Fed X ${stamp}`));
-r = await alice.get(`${F}/payouts`);
-check("reembolso depois do repasse deixa a federação em dívida", /Reembolsado 3\s000,00\sKz/.test(strip(r.html)) && /Em dívida à Camps 3\s000,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 500));
+r = await alice.get(`${F}/payments`);
+check("quota reembolsada sai do líquido", /Reembolsado 3\s000,00\sKz/.test(strip(r.html)) && /Líquido 0,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 500));
 r = await carol.submit(reg2, 'name="athleteId"', { ...fedAthlete, athleteId: fedAthleteId });
 check("depois do reembolso, o atleta já não cumpre a filiação exigida", r.html.includes("exige filiação ativa"), strip(r.html).slice(0, 300));
 
@@ -361,7 +379,7 @@ await alice.submit(M, "Devolver", { reason: "Pago em duplicado", manual: "1" }, 
 r = await alice.get(M);
 check("reembolso manual de quota fica registado", /Devolvido fora da plataforma · Pago em duplicado/.test(strip(r.html)), strip(r.html).slice(0, 500));
 r = await admin.get("/admin/federations");
-check("administração mostra a dívida da federação", /reembolsado 6\s000,00\sKz/.test(strip(r.html)) && /em dívida 3\s000,00\sKz/.test(strip(r.html)), strip(r.html).slice(0, 600));
+check("administração mostra as quotas e a conta da federação", /reembolsado 6\s000,00\sKz/.test(strip(r.html)) && /PayPal · as quotas caem direto/.test(strip(r.html)), strip(r.html).slice(0, 600));
 
 console.log(failures ? `\n${failures} falha(s)` : "\ntudo certo");
 process.exit(failures ? 1 : 0);

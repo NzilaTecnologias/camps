@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { UserError } from "@/lib/errors";
 import { isPlatformAdmin } from "../billing-config";
 import { checkProductionEnv } from "../env-check";
+import { refreshCreditPurchase } from "../credits";
 import { refreshPlanPayment } from "../federation-plan";
 import { publishedNow } from "../manage";
 import { refreshMembershipPayment } from "../memberships";
@@ -179,8 +180,9 @@ export async function listOrganizers(staff: Staff, q: string) {
       id: true,
       name: true,
       slug: true,
-      payoutIban: true,
+      credits: true,
       billingNif: true,
+      paymentAccount: { select: { proxypayPosId: true, proxypaySandbox: true, paypalClientId: true, paypalSandbox: true } },
       members: { where: { role: "OWNER" }, take: 2, select: { user: { select: { id: true, name: true, email: true } } } },
       _count: { select: { events: true, members: true } },
     },
@@ -234,21 +236,21 @@ export async function moderateEvent(staff: Staff, eventId: string, status: strin
 // ---------------------------------------------------------------- Pagamentos
 
 export type PaymentRow = {
-  kind: "registration" | "membership" | "plan";
+  kind: "registration" | "membership" | "plan" | "credits";
   id: string;
   provider: string;
   amountCents: number;
   status: string;
   failureReason: string | null;
   createdAt: Date;
-  /** Inscrição, filiação ou federação a que o pagamento pertence. */
+  /** Inscrição, filiação, federação ou organização a que o pagamento pertence. */
   ref: string;
   label: string;
 };
 
 const PAYMENT_STATUSES = ["PENDING", "SUCCEEDED", "FAILED", "REFUNDED"];
 
-/** Pagamentos de inscrições, quotas e planos, mais recentes primeiro. */
+/** Pagamentos de inscrições, quotas, planos e créditos, mais recentes primeiro. */
 export async function listPayments(staff: Staff, status: string) {
   require(staff, "payments");
   const filter = PAYMENT_STATUSES.includes(status) ? Prisma.sql`WHERE status::text = ${status}` : Prisma.empty;
@@ -265,6 +267,10 @@ export async function listPayments(staff: Staff, status: string) {
       SELECT 'plan', fp.id, fp.provider::text, fp."amountCents", fp.status::text,
              fp."failureReason", fp."createdAt", fp."federationId", f.name
         FROM "FederationPlanPayment" fp JOIN "Federation" f ON f.id = fp."federationId"
+      UNION ALL
+      SELECT 'credits', cp.id, cp.provider::text, cp."amountCents", cp.status::text,
+             cp."failureReason", cp."createdAt", cp."organizerId", o.name
+        FROM "CreditPurchase" cp JOIN "Organizer" o ON o.id = cp."organizerId"
     ) payments ${filter}
     ORDER BY "createdAt" DESC
     LIMIT 200`;
@@ -276,6 +282,7 @@ export async function refreshAnyPayment(staff: Staff, kind: string, paymentId: s
   if (kind === "registration") await refreshPayment(paymentId, { force: true });
   else if (kind === "membership") await refreshMembershipPayment(paymentId, { force: true });
   else if (kind === "plan") await refreshPlanPayment(paymentId, { force: true });
+  else if (kind === "credits") await refreshCreditPurchase(paymentId, { force: true });
   else throw new UserError("Tipo de pagamento inválido");
   await audit(staff, "payment.refresh", { type: `payment.${kind}`, id: paymentId });
 }

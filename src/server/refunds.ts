@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { UserError } from "@/lib/errors";
-import { appUrl, providerFor } from "./payments";
+import { appUrl, payeeOf, providerFor } from "./payments";
 import type { Outcome } from "./payments/types";
 import { deliverEmail } from "./email";
 import { registrationRefundedEmail } from "./notifications";
@@ -73,7 +73,7 @@ export async function requestRefund(
   }
 
   try {
-    const started = await providerFor(payment.provider).refund({
+    const started = await providerFor(payment.provider, await payeeOf(payment.accountId)).refund({
       refundId: refund.id,
       providerRef: payment.providerRef!,
       appUrl: appUrl(),
@@ -95,7 +95,7 @@ export async function refreshRefund(refundId: string) {
   const refund = await prisma.refund.findUnique({ where: { id: refundId }, include: { payment: true } });
   if (!refund || refund.status !== "PENDING" || refund.manual || !refund.providerRef) return;
   try {
-    await settleRefund(refund.id, await providerFor(refund.payment.provider).checkRefund(refund.providerRef));
+    await settleRefund(refund.id, await providerFor(refund.payment.provider, await payeeOf(refund.payment.accountId)).checkRefund(refund.providerRef));
   } catch (error) {
     console.error(`Não foi possível consultar o reembolso ${refund.id}`, error);
   }

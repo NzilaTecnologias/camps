@@ -5,6 +5,7 @@ import { clockRemainingMs, type ScoreboardState } from "@/lib/scoreboard";
 import { applyChange, rulesFor, validChange } from "@/lib/sport-rules";
 import { parseStreamUrl } from "@/lib/stream";
 import { reportResult } from "./brackets";
+import { requireCredits } from "./credits";
 import { cachedJson, kv } from "./kv";
 import { memberOf } from "./manage";
 
@@ -128,6 +129,8 @@ export async function openScoreboard(userId: string, matchId: string, matId: str
   if (matId && !mat) throw new UserError("Área de luta não encontrada");
 
   const untouched = match.clockRemainingMs === null;
+  // Chamar uma luta nova ao placar pede os créditos em dia; uma já começada continua sempre.
+  if (untouched) await requireCredits(match.bracket.division.eventId);
   const previous = await prisma.mat.findMany({ where: { currentMatchId: match.id }, select: { id: true } });
   await prisma.$transaction(async (tx) => {
     // Uma luta só pode estar no placar de uma área de cada vez.

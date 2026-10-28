@@ -5,12 +5,20 @@ import { normalizeAngolanMobile } from "@/lib/phone";
 import { computePrice } from "@/lib/pricing";
 import { premiumActive } from "@/lib/federation-rules";
 import { findUsableCoupon } from "./coupons";
+import { chargeAthlete } from "./credits";
 import { activeMembership } from "./memberships";
 import { deliverEmail } from "./email";
 import { kv } from "./kv";
 import { registrationConfirmedEmail } from "./notifications";
-import { appUrl, availableProviders, getProvider, providerFor } from "./payments";
+import { accountPayee, appUrl, getProvider, payeeOf, paymentMethods, providerFor, simulatorEnabled, type Payee } from "./payments";
 import type { Outcome } from "./payments/types";
+
+// O dinheiro das inscrições vai direto para a conta de pagamentos da organização do evento
+// (PaymentAccount); cada atleta confirmado gasta 1 crédito da organização (server/credits.ts).
+
+const NO_PAYMENTS = "A organização ainda não ligou uma conta para receber os pagamentos";
+
+const organizerAccount = (organizerId: string) => prisma.paymentAccount.findUnique({ where: { organizerId } });
 
 type Window = { registrationOpensAt: Date; registrationClosesAt: Date };
 
@@ -30,6 +38,9 @@ export async function getRegistrationContext(userId: string, eventSlug: string, 
     },
   });
   if (!division) return null;
+  // A conta fica fora do que vai para as páginas: só serve para decidir como se paga.
+  const payee = accountPayee(await organizerAccount(division.event.organizerId));
+  const providers = paymentMethods(payee).map(({ id, label }) => ({ id, label }));
 
   const athletes = await prisma.athleteProfile.findMany({
     where: { userId, gender: division.gender },
@@ -38,11 +49,15 @@ export async function getRegistrationContext(userId: string, eventSlug: string, 
   });
 
   const isFull = division.capacity !== null && division._count.registrations >= division.capacity;
+  // Uma categoria paga precisa de um método para pagar à organização; as gratuitas não.
+  const cannotPay = division.priceCents > 0 && providers.length === 0;
   return {
     division,
     athletes,
-    providers: availableProviders().map(({ id, label }) => ({ id, label })),
-    closedReason: registrationClosedReason(division.event) ?? (isFull ? "Esta categoria está esgotada" : null),
+    payee,
+    providers,
+    closedReason:
+      registrationClosedReason(division.event) ?? (isFull ? "Esta categoria está esgotada" : cannotPay ? NO_PAYMENTS : null),
   };
 }
 
@@ -74,7 +89,7 @@ export async function startRegistration(userId: string, input: RegistrationInput
   const isFree = price.priceCents === 0;
 
   // Valida o método antes de gravar o que quer que seja.
-  if (!isFree) requireProvider(input.provider, input.mobile);
+  if (!isFree) requireProvider(context.payee, input.provider, input.mobile);
 
   // Evento que exige filiação (plano Premium da federação): o atleta tem de estar filiado no dia da prova.
   const federation = division.event.requiresMembership ? division.event.federation : null;
@@ -116,7 +131,11 @@ export async function startRegistration(userId: string, input: RegistrationInput
   });
 
   if (isFree) {
-    await deliverEmail(await prisma.$transaction((tx) => registrationConfirmedEmail(tx, registration.id)));
+    const emailId = await prisma.$transaction(async (tx) => {
+      await chargeAthlete(tx, registration.eventId, registration.athleteId);
+      return registrationConfirmedEmail(tx, registration.id);
+    });
+    await deliverEmail(emailId);
     return { registrationId: registration.id };
   }
   return startPayment(userId, registration.id, input.provider, input.mobile);
@@ -154,9 +173,9 @@ async function createAthlete(
   });
 }
 
-function requireProvider(providerId: string, mobileInput: string) {
-  const provider = getProvider(providerId);
-  if (!provider) throw new UserError("Escolha um método de pagamento");
+function requireProvider(payee: Payee, providerId: string, mobileInput: string) {
+  const provider = getProvider(payee, providerId);
+  if (!provider) throw new UserError(paymentMethods(payee).length === 0 ? NO_PAYMENTS : "Escolha um método de pagamento");
   const mobile = provider.id === "MULTICAIXA_EXPRESS" ? normalizeAngolanMobile(mobileInput) : null;
   if (provider.id === "MULTICAIXA_EXPRESS" && !mobile) {
     throw new UserError("Informe um número de telemóvel angolano válido (9 dígitos, a começar por 9)");
@@ -171,8 +190,6 @@ export async function startPayment(
   providerId: string,
   mobileInput: string,
 ): Promise<Started> {
-  const { provider, mobile } = requireProvider(providerId, mobileInput);
-
   const pending = await prisma.payment.findMany({
     where: { registrationId, status: "PENDING", registration: { registeredById: userId } },
   });
@@ -187,6 +204,8 @@ export async function startPayment(
     },
   });
   if (!registration) throw new UserError("Inscrição não encontrada");
+  const account = await organizerAccount(registration.division.event.organizerId);
+  const { provider, mobile } = requireProvider(accountPayee(account), providerId, mobileInput);
   if (registration.status === "PAID") return { registrationId };
   const closedReason = registrationClosedReason(registration.division.event);
   if (closedReason) throw new UserError(closedReason);
@@ -212,6 +231,8 @@ export async function startPayment(
       amountCents: registration.priceCents,
       chargeCurrency: event.currency,
       chargeAmountCents: registration.priceCents,
+      // A conta da organização onde o dinheiro vai cair (o simulador não cobra em conta nenhuma).
+      accountId: provider.id === "SIMULATOR" ? null : (account?.id ?? null),
     },
   });
 
@@ -256,12 +277,13 @@ async function settle(paymentId: string, outcome: Outcome) {
     });
     if (count === 0 || outcome.status !== "SUCCEEDED") return null;
     const payment = await tx.payment.findUniqueOrThrow({ where: { id: paymentId } });
-    await tx.registration.update({ where: { id: payment.registrationId }, data: { status: "PAID" } });
-    // Só a primeira confirmação conta: é a partir dela que o atleta entra na taxa da Camps.
+    const registration = await tx.registration.update({ where: { id: payment.registrationId }, data: { status: "PAID" } });
+    // Só a primeira confirmação conta: é a partir dela que o atleta gasta o crédito da organização.
     await tx.registration.updateMany({
       where: { id: payment.registrationId, confirmedAt: null },
       data: { confirmedAt: new Date() },
     });
+    await chargeAthlete(tx, registration.eventId, registration.athleteId);
     return registrationConfirmedEmail(tx, payment.registrationId, payment);
   });
   if (emailId) await deliverEmail(emailId);
@@ -278,7 +300,7 @@ export async function refreshPayment(paymentId: string, options: { force?: boole
   const checks = await (await kv()).incr(`paycheck:${payment.id}`, 3_000);
   if (checks > 1 && !options.force) return;
   try {
-    await settle(payment.id, await providerFor(payment.provider).check(payment.providerRef));
+    await settle(payment.id, await providerFor(payment.provider, await payeeOf(payment.accountId)).check(payment.providerRef));
   } catch (error) {
     // Fica pendente: a próxima consulta tenta outra vez.
     console.error(`Não foi possível consultar o pagamento ${payment.id}`, error);
@@ -311,7 +333,7 @@ export async function abandonPayPalPayment(paymentId: string) {
 }
 
 export async function simulatePayment(userId: string, paymentId: string, approve: boolean) {
-  if (!getProvider("SIMULATOR")) throw new UserError("O simulador de pagamentos está desligado");
+  if (!simulatorEnabled()) throw new UserError("O simulador de pagamentos está desligado");
   const payment = await prisma.payment.findFirst({
     where: { id: paymentId, provider: "SIMULATOR", registration: { registeredById: userId } },
     include: { registration: { select: { eventId: true } } },
@@ -353,7 +375,10 @@ export async function getMyRegistration(userId: string, registrationId: string) 
   if (!registration) return null;
   return {
     registration,
-    providers: availableProviders().map(({ id, label }) => ({ id, label })),
+    providers: paymentMethods(accountPayee(await organizerAccount(registration.division.event.organizerId))).map(({ id, label }) => ({
+      id,
+      label,
+    })),
     closedReason: registrationClosedReason(registration.division.event),
   };
 }

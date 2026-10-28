@@ -13,7 +13,7 @@ export const ORGANIZER_ROLE_LABEL: Record<OrganizerRole, string> = {
 };
 
 export const ORGANIZER_ROLE_DESCRIPTION: Record<OrganizerRole, string> = {
-  OWNER: "Tudo, incluindo a equipa e a conta bancária dos repasses",
+  OWNER: "Tudo, incluindo a equipa e a conta de pagamentos",
   ADMIN: "Eventos, categorias, chaves, programação, inscrições e reembolsos",
   STAFF: "Dia da prova: pesagem, placar e transmissão; vê as inscrições",
 };
@@ -30,7 +30,7 @@ const ACCESS = {
   event: MANAGERS,
   /** Pagamentos, reembolsos e o extrato do evento. */
   money: MANAGERS,
-  /** IBAN dos repasses e dados de faturação da organização. */
+  /** Conta de pagamentos (onde caem as inscrições) e dados de faturação da organização. */
   payout: ["OWNER"],
   team: ["OWNER"],
 } satisfies Record<string, OrganizerRole[]>;

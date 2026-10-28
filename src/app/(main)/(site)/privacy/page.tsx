@@ -23,7 +23,7 @@ export default function PrivacyPage() {
             transações. Não recebemos dados de cartões nem códigos bancários.
           </li>
           <li>
-            <strong>Organizadores e federações:</strong> nome do titular e IBAN para os repasses.
+            <strong>Organizadores e federações:</strong> credenciais da conta de pagamentos (ProxyPay e PayPal), guardadas cifradas, e os dados de faturação.
           </li>
           <li>
             <strong>Dados técnicos:</strong> endereço IP, sessão (cookie) e registos de erros, por segurança.
@@ -33,7 +33,7 @@ export default function PrivacyPage() {
 
       <LegalSection n={2} title="Para que os usamos">
         <ul>
-          <li>Executar o serviço que pediu: inscrições, pagamentos, chaves, resultados, filiações e repasses.</li>
+          <li>Executar o serviço que pediu: inscrições, pagamentos, chaves, resultados, filiações e compra de créditos.</li>
           <li>Enviar e-mails de serviço: confirmação do e-mail, palavra-passe, comprovativos e reembolsos.</li>
           <li>Proteger a plataforma contra fraude e abuso, e cumprir obrigações legais e fiscais.</li>
         </ul>

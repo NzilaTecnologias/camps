@@ -32,7 +32,7 @@ Cada evento tem um painel próprio em `/manage/events/<id>`, com um menu por sec
 | Inscrições | Lista com filtros por estado, categoria e pesquisa; cancelar inscrições por pagar ou gratuitas |
 | Descontos e cupões | Desconto antecipado (percentagem até uma data) e cupões de percentagem ou valor fixo, com limite de usos e validade. Os dois acumulam |
 | Pagamentos e reembolsos | Totais cobrados e reembolsados; reembolso total pelo provedor (ProxyPay `type: refund`, PayPal refund da captura) ou registo de devolução feita fora da plataforma |
-| Faturação e repasses | Extrato do evento: cobrado online − reembolsos − taxa Camps − transferências já feitas = saldo a receber (ou em dívida). IBAN da organização para os repasses |
+| Créditos | Atletas confirmados, créditos gastos e em falta no evento, saldo da organização e se ela tem conta ligada para receber as inscrições |
 | Pesagem | Peso de cada atleta confirmado; quem fica acima do limite sai da chave quando ela é gerada |
 | Chaves | Estado de cada categoria, gerar ou regerar (eliminação simples, dupla eliminação ou todos contra todos), e gerar de uma vez as que faltam |
 | Programação | Área de cada categoria (à mão ou repartida automaticamente), hora de início de cada área e minutos por luta; gera a ordem e a hora prevista de cada luta |
@@ -47,7 +47,7 @@ Cada organização tem uma equipa (`/manage/organizers/<id>/team`, ligada no pai
 
 | Papel | Pode |
 |---|---|
-| Dono | Tudo, incluindo a equipa e o IBAN e os dados de faturação da organização |
+| Dono | Tudo, incluindo a equipa, a conta de pagamentos (ProxyPay/PayPal) e os dados de faturação da organização |
 | Gestor | Criar e gerir eventos, categorias, chaves, programação, descontos, inscrições e reembolsos |
 | Mesário | Dia da prova: pesagem, placar, áreas e transmissão; vê as inscrições, as chaves e a programação |
 
@@ -63,13 +63,15 @@ Cada categoria é disputada numa área. "Gerar programação" põe as lutas de c
 
 ## Modelo de negócio
 
-Inspirado nos créditos do Smoothcomp: atletas e público usam a Camps de graça e o organizador paga uma **taxa por atleta confirmado** em cada evento (`PLATFORM_FEE_PER_ATHLETE_KZ`, por omissão 500 Kz). Cada atleta conta uma vez por evento, seja em quantas categorias for, e continua a contar se desistir ou for reembolsado. Cada evento grava a taxa em vigor quando é criado.
+O mesmo modelo de créditos do Smoothcomp: atletas e público usam a Camps de graça e o organizador paga em **créditos**, 1 crédito por atleta confirmado em cada evento (conta uma vez por evento, seja em quantas categorias for, e não volta se o atleta desistir ou for reembolsado). A organização compra-os em **Créditos** (`/manage/organizers/<id>/credits`), pagos à Camps por Multicaixa Express ou PayPal, no mínimo 50 de cada vez: 1000 Kz avulso (`CREDIT_PRICE_KZ`), 900 Kz em pacotes de 100, 800 Kz em pacotes de 500 e 700 Kz em pacotes de 1000. Cada organização nova recebe 20 créditos de boas-vindas, mas ficam bloqueados até à primeira compra; nessa compra passam para o saldo. Os créditos não expiram e cada compra sai faturada.
 
-As inscrições pagas online entram na conta da Camps (Multicaixa Express / PayPal). A taxa é descontada delas e o saldo é transferido para o IBAN da organização: a equipa financeira vê a fila em **Repasses**, na área de administração, e regista cada transferência com a referência bancária. Eventos só com inscrições manuais ou gratuitas ficam com saldo negativo (em dívida à Camps).
+As inscrições pagas caem direto na conta da organização: o dono liga a conta ProxyPay (Multicaixa Express) e/ou PayPal em **Conta de pagamentos** (`/manage/organizers/<id>/payments`), como a ligação ao Stripe no Smoothcomp. A Camps não guarda o dinheiro nem faz repasses; os tokens e segredos ficam cifrados na base de dados (AES-256-GCM, `PAYMENT_SECRETS_KEY`). Sem conta ligada, as categorias pagas não aceitam inscrições online (as gratuitas e as manuais funcionam). Os reembolsos saem pela mesma conta que cobrou.
+
+Um atleta confirmado gasta logo um crédito; sem saldo, fica por cobrar. **As inscrições nunca param**, mas gerar chaves, gerar a programação e chamar uma luta nova ao placar ficam bloqueados enquanto o evento tiver atletas por cobrar (uma luta já começada continua). Comprar créditos gasta-os logo nos atletas em falta. A equipa financeira pode acertar o saldo à mão em **Organizações**, na administração, sempre com um motivo registado.
 
 ### Faturas
 
-A Camps emite faturas-recibo da taxa por atleta (a cada repasse, com os atletas confirmados desde a fatura anterior, ou a pedido do administrador com "Faturar a taxa agora") e do Plano Federação (a cada pagamento). Ficam no painel do cliente (Faturação e repasses do evento; Plano e faturas da federação), seguem por e-mail e abrem em `/invoices/<id>` para imprimir ou guardar em PDF. O cliente indica o nome, NIF e morada para as faturas.
+A Camps emite faturas-recibo de cada compra de créditos e do Plano Federação (a cada pagamento). Ficam no painel do cliente (Créditos da organização; Plano e faturas da federação), seguem por e-mail e abrem em `/invoices/<id>` para imprimir ou guardar em PDF. O cliente indica o nome, NIF e morada para as faturas.
 
 - Numeração sequencial e sem falhas por série e ano (`INVOICE_SERIES_PREFIX`, ex.: FR CAMPS2026/12), atómica mesmo com vários servidores.
 - Preços com IVA incluído (`INVOICE_VAT_PERCENT`, por omissão 14 %): a fatura mostra o líquido e o IVA.
@@ -88,7 +90,7 @@ Federações e ligas têm uma página própria em `/f/<identificador>` e um pain
 | Ranking nacional de atletas e academias (pódios: 9 / 3 / 1 pontos) | | ✓ |
 | Notícias na página da federação | | ✓ |
 
-As organizações dão o seu identificador (no painel, por baixo do nome) à federação, que as autoriza; depois escolhem a federação na Página do evento. As quotas de filiação vão inteiras para a federação, pelo mesmo sistema de repasses: a Camps é paga pela assinatura, não pelas quotas. A federação pode reembolsar uma quota (sempre o valor total, pelo provedor que cobrou ou registando uma devolução feita fora da plataforma): a filiação é cancelada e o valor sai do extrato; se a quota já tinha sido transferida, a federação fica em dívida. O seed cria a "Federação Demo de Jiu-Jitsu de Angola" (`/f/federacao-demo`), Premium, com a Copa Camps sob ela.
+As organizações dão o seu identificador (no painel, por baixo do nome) à federação, que as autoriza; depois escolhem a federação na Página do evento. As quotas de filiação caem direto na conta de pagamentos da federação (ligada em **Receber quotas**), sem taxa: a Camps é paga pela assinatura, não pelas quotas. A federação pode reembolsar uma quota (sempre o valor total, pelo provedor que cobrou ou registando uma devolução feita fora da plataforma): a filiação é cancelada. O seed cria a "Federação Demo de Jiu-Jitsu de Angola" (`/f/federacao-demo`), Premium, com a Copa Camps sob ela.
 
 Ainda não implementado: check-in no dia da prova, competições por equipas e, por decidir, transmissão paga (exige contratar alojamento de vídeo, por exemplo Mux ou Cloudflare Stream) e gestão de academias (produto à parte).
 
@@ -119,12 +121,12 @@ A administração da plataforma fica em `/admin`, **totalmente separada do site*
   | Papel | Pode |
   |---|---|
   | Administrador | Tudo, incluindo a equipa, o registo de atividade e o sistema |
-  | Financeiro | Pagamentos, repasses, faturas e planos das federações (vê também organizações e eventos) |
+  | Financeiro | Pagamentos, créditos das organizações, faturas e planos das federações (vê também organizações e eventos) |
   | Suporte | Utilizadores (suspender, reativar, terminar sessões, confirmar e-mail), eventos (despublicar, cancelar), e-mails (voltar a enviar) |
 
   Os e-mails em `PLATFORM_ADMIN_EMAILS` são sempre administradores: é assim que entra o primeiro, e ninguém os consegue tirar pela interface. Para entrar na equipa, a pessoa cria conta no site, confirma o e-mail e um administrador dá-lhe o papel; tirar o papel fecha logo as sessões de administração dela.
-- **Registo de atividade:** cada entrada (e tentativa falhada), suspensão, despublicação, repasse, fatura, mudança de papel e execução da tarefa de fundo fica gravada com autor, data, IP e detalhes, em **Registo de atividade**. A interface não permite apagá-lo.
-- **Secções:** Painel, Utilizadores, Organizações, Eventos, E-mails, Pagamentos, Repasses, Faturas, Federações, Equipa, Registo de atividade e Sistema (configuração do servidor e "correr a tarefa de fundo agora").
+- **Registo de atividade:** cada entrada (e tentativa falhada), suspensão, despublicação, acerto de créditos, fatura, mudança de papel e execução da tarefa de fundo fica gravada com autor, data, IP e detalhes, em **Registo de atividade**. A interface não permite apagá-lo.
+- **Secções:** Painel, Utilizadores, Organizações, Eventos, E-mails, Pagamentos (incluindo as compras de créditos), Faturas, Federações, Equipa, Registo de atividade e Sistema (configuração do servidor e "correr a tarefa de fundo agora").
 - Uma conta suspensa não entra no site nem na administração, e as sessões abertas terminam no momento da suspensão.
 
 ## Contas e e-mails

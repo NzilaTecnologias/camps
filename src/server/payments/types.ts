@@ -1,5 +1,18 @@
 export type ProviderId = "MULTICAIXA_EXPRESS" | "PAYPAL" | "SIMULATOR";
 
+/** Credenciais de uma conta ProxyPay (Multicaixa Express): as da Camps ou as de uma organização. */
+export type MulticaixaCredentials = { baseUrl: string; token: string; posId: number };
+
+/** Credenciais de uma conta PayPal e a conversão de kwanzas para a moeda que ela cobra. */
+export type PayPalCredentials = {
+  baseUrl: string;
+  clientId: string;
+  clientSecret: string;
+  currency: string;
+  /** Quantos kwanzas vale 1 unidade de `currency`. */
+  exchangeRate: number;
+};
+
 export type StartInput = {
   /** Id do nosso Payment: serve de chave de idempotência e de referência no provedor. */
   paymentId: string;
@@ -29,7 +42,7 @@ export type Outcome =
 export interface PaymentProvider {
   id: ProviderId;
   label: string;
-  /** Verdadeiro quando as credenciais estão no ambiente. */
+  /** Verdadeiro quando há credenciais completas para cobrar. */
   isConfigured(): boolean;
   start(input: StartInput): Promise<StartResult>;
   /**

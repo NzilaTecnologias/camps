@@ -25,7 +25,6 @@ const SECTIONS: { title: string; items: Item[] }[] = [
     title: "Dinheiro",
     items: [
       { href: "/admin/payments", label: "Pagamentos", icon: "wallet", permission: "payments" },
-      { href: "/admin/payouts", label: "Repasses", icon: "refund", permission: "finance" },
       { href: "/admin/invoices", label: "Faturas", icon: "ticket", permission: "finance" },
       { href: "/admin/federations", label: "Federações", icon: "flag", permission: "finance" },
     ],

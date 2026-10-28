@@ -17,7 +17,7 @@ const TABS = [
   { value: "REFUNDED", label: "Reembolsados" },
 ];
 
-const KIND_LABEL = { registration: "Inscrição", membership: "Quota", plan: "Plano Federação" } as const;
+const KIND_LABEL = { registration: "Inscrição", membership: "Quota", plan: "Plano Federação", credits: "Créditos" } as const;
 const STATUS = {
   PENDING: { label: "Pendente", tone: "warning" },
   SUCCEEDED: { label: "Pago", tone: "success" },
@@ -34,7 +34,7 @@ async function Payments({ searchParams }: { searchParams: PageProps<"/admin/paym
     <>
       <AdminHeader
         title="Pagamentos"
-        description="Inscrições, quotas de filiação e Planos Federação (os 200 mais recentes). Um pagamento pendente pode ser consultado já no provedor, sem esperar pela tarefa de fundo."
+        description="Inscrições, quotas de filiação, compras de créditos e Planos Federação (os 200 mais recentes). Um pagamento pendente pode ser consultado já no provedor, sem esperar pela tarefa de fundo."
       />
       <FilterTabs tabs={TABS.map((tab) => ({ href: tab.value ? `/admin/payments?status=${tab.value}` : "/admin/payments", label: tab.label, active: status === tab.value }))} />
       {payments.length === 0 ? (
